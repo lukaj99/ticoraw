@@ -23,17 +23,17 @@ The format is documented in
 
 | Body | Mode | Status |
 |---|---|---|
-| Nikon Z6III | HE\* | **Bit-exact** against Adobe: 15 reference DNGs of 11 distinct NEFs match at every photosite |
-| Nikon Z6III | HE | Decodes cleanly on a public sample; not yet verified bit-exact |
-| Nikon Z9, Z8, Zf, Z5II, Z50II, ZR | HE, HE\* | Decode cleanly on public CC0 samples (see [docs/compat.md](https://github.com/lukaj99/ticoraw/blob/main/docs/compat.md)); not yet verified bit-exact |
+| Nikon Z6III | HE, HE\* | **Bit-exact** against Adobe: 15 Lightroom/Topaz DNGs of 11 local HE\* NEFs, plus Adobe DNG Converter 18.7 output for public HE and HE\* (16:9) samples |
+| Nikon Z9, Z8, Zf, Z5II, Z50II | HE, HE\* | **Bit-exact** against Adobe DNG Converter 18.7 on public CC0 samples, including DX, 1:1 and 16:9 crops (see [docs/compat.md](https://github.com/lukaj99/ticoraw/blob/main/docs/compat.md)) |
+| Nikon ZR | HE\* | **Bit-exact** against Adobe DNG Converter 18.7 on a public sample (no public HE file) |
 
 Of the 15 reference DNGs, 14 were written by Adobe Lightroom and one by Topaz Photo AI,
 whose CFA image is identical to Adobe's.
 
-DNG colour profiles (white level and D65 colour matrix) are built in for all of the bodies
-above. Only the Z6III's is verified against Adobe HE output; the others come from the
-public LibRaw / dnglab tables. Other models decode, but their DNG gets an identity colour
-matrix and `ticoraw decode` warns about it.
+DNG colour profiles (white level, D65 colour matrix, Adobe camera name and baseline
+exposure) are built in for all of the bodies above, and every value matches what Adobe
+writes for the same file. Other models decode, but their DNG gets an identity colour matrix
+and `ticoraw decode` warns about it.
 
 Classic NEF compression (lossless, lossy, uncompressed) is out of scope: use any existing
 raw library for those. Codestreams outside the supported profile are rejected with an

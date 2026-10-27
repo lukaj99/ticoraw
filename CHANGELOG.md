@@ -12,12 +12,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `DecodedRaw::baseline_exposure`, written to DNGs as `BaselineExposure`: Adobe's per-body
   baseline plus one stop for frames shot in Nikon's HLG tone mode (MakerNote ColorSpace
   BT.2100 or an HLG Picture Control). Matches Adobe's value on every ground-truth DNG
-  (Z6III: +0.25 EV SDR, +1.25 EV HLG); other bodies get only the HLG stop.
+  (Z6III: +0.25 EV SDR, +1.25 EV HLG); unknown bodies get only the HLG stop.
 - `MakerNote::{color_space, hlg_picture_control, is_hlg}`.
 - DNG `UniqueCameraModel` uses Adobe's camera names (`Nikon Z 6 3`, ...) so Adobe software
-  applies its own camera profile to ticoraw DNGs. Only the Z6III name is confirmed.
+  applies its own camera profile to ticoraw DNGs; every name matches Adobe DNG Converter.
 - The ground-truth suite also checks `BaselineExposure`, `Orientation` and the default crop
   against each Adobe DNG.
+
+### Changed
+
+- Bit-exactness verified on every HE/HE*-capable body: public CC0 HE and HE* samples from
+  the Z9, Z8, Zf, Z6III, Z5II, Z50II and ZR match Adobe DNG Converter 18.7 at every
+  photosite, with matching levels, colour matrices, camera names and baseline exposures.
+- Z9 white level is 15892 (Adobe's HE value), not 15520; per-body `BaselineExposure`
+  values come from Adobe DNG Converter output.
 
 ## [0.1.0] - 2026-10-27
 

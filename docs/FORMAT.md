@@ -5,8 +5,9 @@ Efficiency" (HE) and "High Efficiency\*" (HE\*) NEF modes, exactly as the `ticor
 decodes it. It is self-contained: with it and a copy of ISO/IEC 21122-1 terminology you
 should be able to write an independent, bit-exact decoder.
 
-The decoder this describes is **bit-exact against Adobe Lightroom DNGs of Nikon Z6III HE\*
-files** (every photosite of every frame tested matches). Statements that rest on that
+The decoder this describes is **bit-exact against Adobe** (Lightroom DNGs of Nikon Z6III HE\*
+files, and Adobe DNG Converter 18.7 output for HE and HE\* files from every HE-capable body:
+Z9, Z8, Zf, Z6III, Z5II, Z50II and ZR); every photosite of every frame tested matches. Statements that rest on that
 verification are unmarked. Statements that hold for this decoder but have not been
 exercised by real camera files are marked **[unexercised]**; open questions are marked
 **[unknown]**.

@@ -1,6 +1,26 @@
 # Cross-camera compatibility
 
-Status as of 2026-10-27. The decoder is **bit-exact against Adobe** only for Nikon Z6III HE\* frames. The ground-truth suite (`TICORAW_CORPUS`, see the README) compares 15 DNGs made from 11 distinct NEFs: 14 written by Adobe Lightroom and 1 by Topaz Photo AI, whose CFA image is identical to Adobe's. All 15 match at every photosite. This page covers the other HE/HE\*-capable bodies, tested with public CC0 samples.
+Status as of 2026-10-27. The decoder is **bit-exact against Adobe on every Nikon body that writes HE/HE\***. Two references back this:
+
+- **Local Z6III HE\* corpus:** 15 DNGs made from 11 distinct NEFs (14 written by Adobe Lightroom, 1 by Topaz Photo AI with an identical CFA image). All match at every photosite.
+- **Public CC0 samples, below:** all 13 converted with Adobe DNG Converter 18.7 (`-u -p0`, uncompressed). Running the ground-truth suite on them (`TICORAW_CORPUS` pointing at the samples plus Adobe's DNGs) gives 13 of 13 pairs with 0 mismatching photosites. The CFA pattern, black and white levels, `BaselineExposure`, `Orientation` and default crop also agree with Adobe's for every pair.
+
+## Adobe DNG Converter 18.7 results
+
+| Body | Mode | Frame | Photosites | Mismatches | Adobe `UniqueCameraModel` | Adobe `BaselineExposure` |
+|---|---|---|---|---|---|---|
+| Z 9 | HE, HE\* | FX 8280x5520 | 45,705,600 | 0, 0 | Nikon Z 9 | +0.20 |
+| Z 8 | HE, HE\* | FX 8280x5520 | 45,705,600 | 0, 0 | Nikon Z 8 | +0.20 |
+| Z f | HE, HE\* | FX 6064x4040 | 24,498,560 | 0, 0 | Nikon Z f | +0.20 |
+| Z6III | HE | FX 6064x4040 | 24,498,560 | 0 | Nikon Z 6 3 | +0.25 |
+| Z6III | HE\* | 16:9 6064x3416 | 20,714,624 | 0 | Nikon Z 6 3 | +0.25 |
+| Z 5 II | HE | DX 4000x2672 | 10,688,000 | 0 | Nikon Z 5 2 | +0.20 |
+| Z 5 II | HE\* | FX 6064x4040 | 24,498,560 | 0 | Nikon Z 5 2 | +0.20 |
+| Z 50 II | HE | 1:1 3728x3728 | 13,897,984 | 0 | Nikon Z 50 2 | +0.25 |
+| Z 50 II | HE\* | DX 5600x3728 | 20,876,800 | 0 | Nikon Z 50 2 | +0.25 |
+| ZR | HE\* (HLG) | FX 6064x4040 | 24,498,560 | 0 | Nikon ZR | +1.25 (= +0.25 + 1 stop HLG) |
+
+Adobe writes WhiteLevel 15892 for every one of these files, and its D65 ColorMatrix equals the built-in table for every body. Adobe's DNGs are not stored in this repository.
 
 ## Summary
 
@@ -13,10 +33,8 @@ Status as of 2026-10-27. The decoder is **bit-exact against Adobe** only for Nik
   - This covers CAP, all PIH fields, the 13 PIH vendor bytes (and so the transfer curve), CDT and WGT.
   - The header matches the local Z6III corpus.
   - Only Wf, Hf and Lcod change from file to file.
-- **Not yet proven:** bit-exactness for the other bodies. No public Adobe-converted DNG exists for these files, and raw.pixls.us does not accept DNG Converter output.
-  - With identical headers and exact entropy sync, the only untested pixel paths are the frame-size-dependent ones: band widths, partial last slices and edge clamping.
-  - Those paths look clean on every metric below.
-- **Colour metadata:** DNG output carries Adobe's D65 ColorMatrix for every body above (values from the public LibRaw / dnglab tables). Only the Z6III white level (15892) is confirmed against Adobe HE output; the others (15892, Z 9: 15520) come from lossless-mode files.
+- **Bit-exact:** every file matches Adobe DNG Converter 18.7 at every photosite (table above), which also exercises the frame-size-dependent paths: odd band widths, partial last slices and edge clamping.
+- **Colour metadata:** the D65 ColorMatrix, WhiteLevel (15892), `UniqueCameraModel` and `BaselineExposure` that ticoraw writes equal Adobe's for every body.
 
 ## Samples
 
@@ -116,11 +134,10 @@ Observations that settle two formerly open questions, for the bodies seen so far
 
 ## Known gaps
 
-1. **No Adobe ground truth outside the Z6III.** The other bodies are verified only by exact entropy sync and the image-quality checks above, not bit-for-bit.
-   - To close this gap, convert the samples with Adobe DNG Converter: `"Adobe DNG Converter" -u -d <out> <file>.NEF`, where `-u` writes an uncompressed DNG.
-   - Then run `ticoraw verify <nef> <dng>`.
-   - If any frame mismatches, check the frame-size-dependent paths first: band widths and partial-slice handling in `entropy.rs`, odd-length lifting in `wavelet.rs`, and edge clamping in `mct.rs`.
-2. **Colour metadata outside the Z6III is unverified.** The built-in matrices and white levels for the Z 8, Z 9, Z f, Z 5 II, Z 50 II and ZR come from public tables, not from Adobe HE DNGs. The CFA values themselves are unaffected.
+1. **Adobe reference is one release.** The verification above used Adobe DNG Converter 18.7 (build 2743). Re-run it after major Adobe or camera-firmware updates:
+   - Convert with `"Adobe DNG Converter" -u -p0 -d <dir> <file>.NEF` (the converter also runs from an expanded package, `pkgutil --expand-full`, without being installed).
+   - Then run `ticoraw verify <nef> <dng>`, or the ground-truth suite on the folder.
+2. **One sample per body and mode.** Every frame shape and rate seen so far decodes exactly, but each body/mode pair rests on one public file (two for the Z6III).
 3. **12-bit HE, N-RAW video and other untested variants.** All public HE/HE\* stills are 14-bit.
    - No 12-bit HE NEF was found. Nikon's menus suggest HE is 14-bit only, but this is unverified.
    - N-RAW (`.NEV`) video frames reportedly use the same TicoRAW codestream at video resolutions (github.com/hayamdk/nev2nef). They are untested.

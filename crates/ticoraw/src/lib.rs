@@ -307,9 +307,9 @@ fn inspect_codestream(cs: &[u8]) -> Result<CodestreamInfo> {
 ///
 /// Besides the mosaic, the result carries the CFA pattern, black levels, as-shot white
 /// balance, orientation and crop from the container. White level and colour matrix come
-/// from a built-in per-model profile: the Z6III's is verified against Adobe Lightroom
-/// DNGs; those of the Z8, Z9, Zf, Z5II, Z50II and ZR come from the public LibRaw / dnglab
-/// tables and are unverified. Other models get white level 16383 and no colour matrix.
+/// from a built-in per-model profile for the Z6III, Z8, Z9, Zf, Z5II, Z50II and ZR, which
+/// matches what Adobe writes for each. Other models get white level 16383 and no colour
+/// matrix.
 ///
 /// # Errors
 ///
@@ -374,9 +374,8 @@ pub fn decode_nef(nef: &[u8]) -> Result<DecodedRaw> {
 /// Adobe's camera name for a TIFF `Model`, written as the DNG `UniqueCameraModel` so Adobe
 /// software applies its own camera profile (tone curve, looks) to our DNGs.
 ///
-/// `Nikon Z 6 3` is confirmed from Adobe DNGs; the others follow the same pattern
-/// (`Nikon Z 6` is also confirmed for the classic Z 6). An unknown model keeps
-/// `"<Make> <Model>"`, so a wrong guess only means Adobe falls back to a generic profile.
+/// Every listed name matches Adobe DNG Converter 18.7 output. An unknown model keeps
+/// `"<Make> <Model>"`, for which Adobe falls back to a generic profile.
 pub(crate) fn adobe_camera_name(model: &str) -> Option<&'static str> {
     Some(match model {
         "NIKON Z6_3" => "Nikon Z 6 3",
@@ -393,12 +392,13 @@ pub(crate) fn adobe_camera_name(model: &str) -> Option<&'static str> {
 /// Adobe's `BaselineExposure` in hundredths of an EV.
 ///
 /// Adobe adds a per-body base value, plus a full stop for HLG tone mode, in which Nikon
-/// exposes the sensor one stop lower. Both are confirmed on Z6III frames (+0.25 SDR, +1.25
-/// HLG at every ISO from 400 to 64000); for other bodies the base value is unknown, so only
-/// the HLG stop is applied.
+/// exposes the sensor one stop lower. The base values match Adobe DNG Converter 18.7 for
+/// every listed body, and the HLG stop is confirmed on Z6III (every ISO from 400 to 64000)
+/// and ZR frames. Unknown bodies get only the HLG stop.
 fn baseline_exposure(model: &str, hlg: bool) -> Option<i32> {
     let base = match model {
-        "NIKON Z6_3" => Some(25),
+        "NIKON Z6_3" | "NIKON ZR" | "NIKON Z50_2" => Some(25),
+        "NIKON Z 8" | "NIKON Z 9" | "NIKON Z f" | "NIKON Z5_2" => Some(20),
         _ => None,
     };
     let hlg_stop = if hlg { 100 } else { 0 };
@@ -410,8 +410,8 @@ fn baseline_exposure(model: &str, hlg: bool) -> Option<i32> {
 
 /// Per-model white level and XYZ(D65)->camera matrix (Adobe's ColorMatrix for D65).
 ///
-/// The Z6III entry is confirmed against Adobe Lightroom's HE* DNGs; the others come from
-/// the public LibRaw / dnglab tables and are not yet verified against Adobe HE output.
+/// Every entry matches the D65 `ColorMatrix` and `WhiteLevel` Adobe writes for HE/HE* files
+/// (Lightroom for the Z6III, DNG Converter 18.7 for every listed body).
 fn camera_profile(model: &str) -> (u16, Option<[(i32, i32); 9]>) {
     let matrix: [i32; 9] = match model {
         "NIKON Z6_3" | "NIKON ZR" => [11206, -4286, -941, -4879, 12847, 2251, -745, 1654, 7374],
@@ -422,7 +422,8 @@ fn camera_profile(model: &str) -> (u16, Option<[(i32, i32); 9]>) {
         "NIKON Z50_2" => [11640, -4829, -1079, -5107, 13006, 2325, -972, 1711, 7380],
         _ => return (16383, None),
     };
-    let white = if model == "NIKON Z 9" { 15520 } else { 15892 };
+    // Adobe writes 15892 for every HE/HE* body (lossless-mode tables list 15520 for the Z9).
+    let white = 15892;
     (white, Some(matrix.map(|n| (n, 10000))))
 }
 
@@ -625,8 +626,10 @@ mod tests {
     fn baseline_exposure_follows_adobe() {
         assert_eq!(baseline_exposure("NIKON Z6_3", false), Some(25));
         assert_eq!(baseline_exposure("NIKON Z6_3", true), Some(125));
-        assert_eq!(baseline_exposure("NIKON Z 8", true), Some(100));
-        assert_eq!(baseline_exposure("NIKON Z 8", false), None);
+        assert_eq!(baseline_exposure("NIKON ZR", true), Some(125));
+        assert_eq!(baseline_exposure("NIKON Z 8", false), Some(20));
+        assert_eq!(baseline_exposure("NIKON Z 99", true), Some(100));
+        assert_eq!(baseline_exposure("NIKON Z 99", false), None);
     }
 
     #[test]

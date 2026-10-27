@@ -50,7 +50,7 @@ is identical either way.
 | `wavelet` | `synthesize_1d`, `synthesize_row` (horizontal cascade), `synthesize_columns` (frame-wide vertical) |
 | `mct` | `inverse_star_tetrix` (four lifting steps), `assemble_rggb` (interleave through the curve) |
 | `dng` | `decode_dng_cfa` (lossless JPEG SOF3 or uncompressed CFA from a DNG, for ground truth) and `decode_lossless_jpeg` (one SOF3 stream to a `LosslessJpeg` with its dimensions); `encode_uncompressed_dng`, fallible, writing `Orientation`, `DefaultCropOrigin` / `DefaultCropSize`, `BaselineExposure` and Adobe's `UniqueCameraModel` name |
-| `lib` | Public entry points `inspect_nef`, `inspect_nef_prefix`, `decode_nef`, `decode_ticoraw`; `NikonCompression::{from_code, code}`; slice framing; per-model colour profile (Z6III verified against Adobe; Z8, Z9, Zf, Z5II, Z50II and ZR from the public LibRaw / dnglab tables, unverified) |
+| `lib` | Public entry points `inspect_nef`, `inspect_nef_prefix`, `decode_nef`, `decode_ticoraw`; `NikonCompression::{from_code, code}`; slice framing; per-model colour profile, Adobe camera name and baseline exposure for the Z6III, Z8, Z9, Zf, Z5II, Z50II and ZR, all matching Adobe DNG Converter 18.7 |
 | `error` | `TicoError` |
 
 ### API stability
