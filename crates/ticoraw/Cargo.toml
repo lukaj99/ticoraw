@@ -1,0 +1,24 @@
+[package]
+name = "ticoraw"
+description = "Clean-room decoder for Nikon High Efficiency (HE/HE*) NEF raw files (JPEG XS / TicoRAW codestreams)"
+keywords = ["nikon", "nef", "raw", "jpeg-xs", "dng"]
+categories = ["multimedia::images", "multimedia::encoding"]
+readme = "../../README.md"
+# The README lives at the workspace root; cargo copies it into the package.
+include = ["src/**", "Cargo.toml", "LICENSE-*", "README.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]
+
+[dependencies]
+rayon = { version = "1.12", optional = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+[package]
+name = "ticoraw-cli"
+description = "Command-line tool to inspect, decode and verify Nikon HE/HE* NEF raw files"
+keywords = ["nikon", "nef", "raw", "jpeg-xs", "dng"]
+categories = ["multimedia::images", "command-line-utilities"]
+readme = "../../README.md"
+# The README lives at the workspace root; cargo copies it into the package.
+include = ["src/**", "Cargo.toml", "LICENSE-*", "README.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ticoraw"
+path = "src/main.rs"
+
+[dependencies]
+ticoraw = { path = "../ticoraw", version = "0.1.0" }
+
+[lints]
+workspace = true
