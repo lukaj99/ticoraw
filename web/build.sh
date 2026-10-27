@@ -55,7 +55,14 @@ case $build in
 *[!A-Za-z0-9._-]*) die "BUILD_ID may contain only letters, digits and . _ -" ;;
 esac
 
-# Only ever replace a directory this script made.
+# Only ever replace a directory this script made. A file or a symbolic link in its place is
+# refused too (find lists nothing inside a file, so it would pass the emptiness check below).
+if [ -L "$out" ]; then
+  die "$out is a symbolic link; pass the directory itself"
+fi
+if [ -e "$out" ] && [ ! -d "$out" ]; then
+  die "$out exists and is not a directory; remove it or pick another directory"
+fi
 if [ -e "$out" ] && [ ! -f "$out/.ticoraw-web" ]; then
   if [ -n "$(find "$out" -mindepth 1 -maxdepth 1 2>/dev/null | head -n 1)" ]; then
     die "$out exists and was not made by build.sh; remove it or pick another directory"

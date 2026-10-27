@@ -224,14 +224,15 @@ export function formatSeconds(ms) {
 /**
  * A one-line summary of the list, for the progress bar's label and the live region.
  * `counts` has `total`, `checking`, `ready`, `converting`, `done`, `failed` (unsupported
- * files included), `skipped` (classic NEFs) and `running`.
+ * files included), `skipped` (classic NEFs), `exists` (files whose DNG was already in the
+ * chosen folder, so nothing was written; 0 if left out) and `running`.
  */
 export function summary(counts) {
-  const { total, checking, ready, converting, done, failed, skipped, running } = counts;
+  const { total, checking, ready, converting, done, failed, skipped, exists = 0, running } = counts;
   if (total === 0) return "No files yet.";
   const parts = [];
   if (running) {
-    const finished = done + failed;
+    const finished = done + failed + exists;
     parts.push(`Converting: ${finished} of ${finished + converting + ready + checking} finished.`);
   } else {
     if (checking > 0) parts.push(`Checking ${plural(checking, "file")}.`);
@@ -239,6 +240,13 @@ export function summary(counts) {
     if (ready > 0) parts.push(`${plural(ready, "file")} ready to convert.`);
   }
   if (failed > 0) parts.push(`${plural(failed, "file")} could not be converted.`);
+  if (exists > 0) {
+    parts.push(
+      exists === 1
+        ? "1 file skipped: its DNG already exists in the folder."
+        : `${exists} files skipped: their DNGs already exist in the folder.`,
+    );
+  }
   if (skipped > 0) {
     parts.push(skipped === 1 ? "1 file needs no conversion." : `${skipped} files need no conversion.`);
   }

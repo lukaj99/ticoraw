@@ -157,6 +157,14 @@ test("summary lines", () => {
     "2 files converted. 2 files need no conversion.",
   );
   assert.equal(summary({ ...zero, total: 1, skipped: 1, running: false }), "1 file needs no conversion.");
+  assert.equal(
+    summary({ ...zero, total: 3, done: 1, exists: 2, running: false }),
+    "1 file converted. 2 files skipped: their DNGs already exist in the folder.",
+  );
+  assert.equal(
+    summary({ ...zero, total: 3, ready: 1, done: 1, exists: 1, running: true }),
+    "Converting: 2 of 3 finished. 1 file skipped: its DNG already exists in the folder.",
+  );
 });
 
 test("VERIFIED_MODELS matches the library's camera profiles", () => {

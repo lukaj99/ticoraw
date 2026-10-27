@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { crc32, dosDateTime, zipParts } from "../../src/zip.js";
+import { crc32, dosDateTime, safeEntryName, zipParts } from "../../src/zip.js";
 
 const python = spawnSync("python3", ["-c", "import zipfile"]).status === 0;
 
@@ -112,4 +112,44 @@ test("offsets past 4 GiB switch to ZIP64 without reading the data", () => {
     (p) => p.length === 46 && Buffer.from(p).readUInt32LE(0) === 0x02014b50 && Buffer.from(p).readUInt32LE(42) === 0xffffffff,
   );
   assert.ok(thirdCentral, "no central header with a ZIP64 offset");
+});
+
+test("entry names are relative, with forward slashes only", () => {
+  const cases = [
+    ["DSC_0001.dng", "DSC_0001.dng"],
+    ["Card/DCIM/DSC_0002.dng", "Card/DCIM/DSC_0002.dng"],
+    ["a\\b.dng", "a/b.dng"],
+    ["..\\..\\evil.dng", "evil.dng"],
+    ["../../evil.dng", "evil.dng"],
+    ["a/./b/../c.dng", "a/b/c.dng"],
+    ["/etc/x.dng", "etc/x.dng"],
+    ["//server/share/x.dng", "server/share/x.dng"],
+    ["C:\\Users\\x.dng", "Users/x.dng"],
+    ["c:x.dng", "x.dng"],
+    ["/C:/x.dng", "x.dng"],
+    ["C:C:..\\x.dng", "x.dng"],
+    ["tab\there\n.dng", "tab_here_.dng"],
+    ["D:", "_"],
+    ["Ünïcödé/é.dng", "Ünïcödé/é.dng"],
+  ];
+  for (const [name, want] of cases) {
+    assert.equal(safeEntryName(name), want, name);
+    assert.equal(safeEntryName(want), want, `idempotent: ${want}`);
+  }
+});
+
+test("zipParts writes safe entry names", () => {
+  const enc = new TextEncoder();
+  const bytes = enc.encode("x");
+  const e = { data: bytes, size: 1, crc: crc32(bytes), date: new Date(2026, 0, 1) };
+  const parts = zipParts([{ ...e, name: "..\\..\\evil.dng" }, { ...e, name: "/abs/a\\b.dng" }]);
+  const zip = Buffer.concat(parts.map((p) => Buffer.from(p)));
+  const names = [];
+  for (let p = zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])); p >= 0; ) {
+    names.push(zip.toString("utf8", p + 46, p + 46 + zip.readUInt16LE(p + 28)));
+    p = zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]), p + 46);
+  }
+  assert.deepEqual(names, ["evil.dng", "abs/a/b.dng"]);
+  // The local headers carry the same names.
+  assert.equal(Buffer.from(parts[1]).toString("utf8"), "evil.dng");
 });

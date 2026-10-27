@@ -68,8 +68,14 @@ When distribution is allowed, three things are worth knowing:
   `<meta>` policy covers the page but not its Web Workers. The workers run only the
   decoder, which does no I/O, but a header covers them as well.
 - A host must not inject scripts (analytics, banners): the policy blocks them.
-- Deploying must stay behind the patent gate: the repository variable
-  `ALLOW_BINARY_DISTRIBUTION` set to `'true'` and a manual run.
+- The patent gate is the repository variable `ALLOW_BINARY_DISTRIBUTION`, and only that:
+  no manual run is needed. While it is not `'true'` (it is unset today), no workflow builds
+  the converter for deployment. Once it is `'true'`,
+  [`pages.yml`](../.github/workflows/pages.yml) builds the converter into `/convert/` and
+  deploys it to GitHub Pages with the documentation, on every push to `main` that changes
+  the site's sources and on every manual run on `main`. Setting the variable for another
+  reason (to attach CLI binaries to a release, for example) therefore deploys the
+  converter too.
 
 ## What the page does
 
@@ -90,9 +96,11 @@ When distribution is allowed, three things are worth knowing:
   most 6. A 45 MP frame needs about 0.5 GB in its worker, and a worker keeps that memory
   for its next file. Each row shows how long its file took. "Stop" ends the workers; the
   remaining files can be converted again later.
-- **Options.** Lossless JPEG or uncompressed raw data, full-size preview or thumbnail only,
-  and whether to copy the NEF's XMP packet. These are the `toDng` options of
-  `ticoraw-wasm`. The NEF's name is always written as `OriginalRawFileName`.
+- **Options.** Lossless JPEG or uncompressed raw data; a medium-size preview (the camera's
+  own embedded JPEG, the smallest one at least 1024 pixels on its long side, usually about
+  1600 pixels wide; for HLG frames, which embed only HEVC previews, one rendered from the
+  raw data at half size) or a thumbnail only; and whether to copy the NEF's XMP packet.
+  These are the `toDng` options of `ticoraw-wasm`. The NEF's name is always written as `OriginalRawFileName`.
 - **Output.** By default each DNG stays in the page as a `Blob` (browsers keep large Blobs
   on disk when memory runs short) with its own download link, and "Download all as ZIP"
   joins them into one archive. The ZIP writer (`src/zip.js`) stores the DNGs as they are,
@@ -100,12 +108,25 @@ When distribution is allowed, three things are worth knowing:
   4 GiB, and never copies the file data: the archive is a `Blob` made of the small headers
   and the DNG Blobs. Where the File System Access API exists (Chrome and Edge on
   desktop), "Save each one straight into a folder" writes every DNG to disk as soon as it
-  is ready, keeps nothing in memory, recreates the subfolders of a dropped folder and never
-  overwrites a file.
+  is ready, keeps nothing in memory and recreates the subfolders of a dropped folder. It
+  never overwrites a file: a file whose DNG is already in the folder is skipped, and the
+  row says so. Files of one list whose DNG names would clash (ignoring case, as most
+  desktop file systems do) get " (2)", " (3)", ... and the name is chosen before the file
+  is converted, so parallel conversions cannot pick the same one. Each DNG is written as
+  `<name>.partial` and renamed once it is complete (where the browser cannot rename, it is
+  written under its final name and removed if writing fails), so a failed write never
+  leaves a partial DNG behind. A row says "Saved as" only for a file that was written. If
+  the browser stops allowing writes to the folder, the run stops and the files not saved
+  wait for the next run, which asks for a folder again.
+- **Output names.** ZIP entries and files saved into a folder are named after the NEF's
+  path, with `/` between folders only: backslashes in a file name become `/`, and `..`,
+  empty folders, a leading `/` and drive letters are dropped, so that no extractor writes
+  outside the folder it extracts into.
 - **Accessibility.** Everything works from the keyboard, focus is always visible, progress
   is announced through a polite live region, and the page follows the system's light or
-  dark mode and reduced-motion setting. Below 40 rem the file table becomes one card per
-  file.
+  dark mode and reduced-motion setting. When a run ends or is stopped, focus moves to
+  Convert, or to the summary when nothing is left to convert. Below 40 rem the file table
+  becomes one card per file.
 
 | File | What it is |
 |---|---|
@@ -123,7 +144,7 @@ When distribution is allowed, three things are worth knowing:
 ```sh
 cd web
 npm ci                                   # Playwright and axe-core, for the tests only
-npm run test:unit                        # src/core.js and src/zip.js in Node.js
+npm run test:unit                        # src/core.js, src/files.js and src/zip.js in Node.js
 sh build.sh
 npx playwright install chromium          # once
 sh ../conformance/fetch.sh ~/.cache/ticoraw-conformance
@@ -131,7 +152,8 @@ TICORAW_SAMPLES=~/.cache/ticoraw-conformance npx playwright test
 ```
 
 The unit tests check the ZIP writer against Python's `zipfile` module when `python3` is
-installed, ZIP64 included. The end-to-end tests run the built page in headless Chromium and:
+installed, ZIP64 included, and folder saving against an in-memory stand-in for the File
+System Access API. The end-to-end tests run the built page in headless Chromium and:
 
 - convert the public `z6iii_he` and `z5ii_he_dx` samples through the page, download each
   DNG and the ZIP, and check every DNG's CFA SHA-256 against
@@ -139,6 +161,10 @@ installed, ZIP64 included. The end-to-end tests run the built page in headless C
   Node.js with the same wasm module);
 - check that the options reach the converter, that folders are walked, that classic NEFs
   and broken files are explained, and that drag and drop works;
+- save into a folder (the origin private file system stands in for a folder on disk):
+  clashing names, a DNG already there, a failed write and a write permission lost during a
+  run; and check that ZIP entry names stay inside the archive's folder;
+- check where keyboard focus goes after a run and after Stop;
 - check that no request leaves the page's server, and that the Content-Security-Policy
   blocks requests to other sites;
 - run [axe-core](https://github.com/dequelabs/axe-core) in light and dark mode, at desktop

@@ -77,31 +77,85 @@ export function canSaveToFolder() {
   return typeof globalThis.showDirectoryPicker === "function";
 }
 
+/** Whether `path` (folders separated by `/`) names a file or folder inside `root`. */
+export async function existsIn(root, path) {
+  const parts = path.split("/");
+  const name = parts.pop();
+  let dir = root;
+  for (const p of parts) {
+    try {
+      dir = await dir.getDirectoryHandle(p);
+    } catch (e) {
+      if (e?.name === "NotFoundError") return false;
+      throw e;
+    }
+  }
+  return exists(dir, name);
+}
+
+/** Set once a rename has failed, so later files are written under their final name. */
+let moveFails = false;
+
 /**
  * Writes `blob` as `path` (folders separated by `/`) inside the directory handle `root`,
- * creating folders as needed. Never overwrites: an existing name gets " (2)", " (3)", ...
- * Returns the path it wrote.
+ * creating folders as needed. Returns `"written"`, or `"exists"` without writing anything
+ * when a file or folder of that name is already there: it never overwrites.
+ *
+ * The data goes to `<name>.partial` first and is renamed to `<name>` once it is complete
+ * (`FileSystemHandle.move`), so a failed write never leaves a partial DNG under the final
+ * name. Where `move` is missing or fails, the file is written under its final name, and
+ * removed again if writing fails.
+ *
+ * Two calls must not write the same `path` at the same time; the caller keeps names unique.
  */
 export async function saveInto(root, path, blob) {
   const parts = path.split("/");
-  const fileName = parts.pop();
+  const name = parts.pop();
   let dir = root;
   for (const p of parts) dir = await dir.getDirectoryHandle(p, { create: true });
-  const dot = fileName.lastIndexOf(".");
-  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
-  const ext = dot > 0 ? fileName.slice(dot) : "";
-  let name = fileName;
-  for (let n = 2; await exists(dir, name); n++) name = `${stem} (${n})${ext}`;
+  if (await exists(dir, name)) return "exists";
+  if (!moveFails && typeof globalThis.FileSystemFileHandle?.prototype.move === "function") {
+    const temp = `${name}.partial`;
+    const handle = await write(dir, temp, blob);
+    try {
+      // Another program may have created the file meanwhile; move() would replace it.
+      if (await exists(dir, name)) {
+        await remove(dir, temp);
+        return "exists";
+      }
+      await handle.move(name);
+      return "written";
+    } catch (e) {
+      await remove(dir, temp);
+      if (e?.name === "NotAllowedError") throw e;
+      moveFails = true;
+    }
+  }
+  await write(dir, name, blob);
+  return "written";
+}
+
+/** Writes `blob` as the file `name` in `dir`; on failure removes it and rethrows. */
+async function write(dir, name, blob) {
   const handle = await dir.getFileHandle(name, { create: true });
-  const out = await handle.createWritable();
   try {
-    await out.write(blob);
-    await out.close();
+    const out = await handle.createWritable();
+    try {
+      await out.write(blob);
+      await out.close();
+    } catch (e) {
+      await out.abort?.().catch(() => {});
+      throw e;
+    }
   } catch (e) {
-    await out.abort?.().catch(() => {});
+    await remove(dir, name);
     throw e;
   }
-  return [...parts, name].join("/");
+  return handle;
+}
+
+async function remove(dir, name) {
+  await dir.removeEntry(name).catch(() => {});
 }
 
 async function exists(dir, name) {

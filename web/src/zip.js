@@ -40,11 +40,29 @@ export function dosDateTime(date) {
 }
 
 /**
+ * `name` as a safe relative entry name (APPNOTE 4.4.17.1: forward slashes only, no drive
+ * letter, no leading slash), so that no extractor writes outside the folder it extracts
+ * into. Backslashes become `/`; empty, `.` and `..` folders and a leading drive letter are
+ * dropped; control characters become `_`. Applying it again changes nothing.
+ * `"..\\..\\C:\\x.dng"` becomes `"x.dng"`.
+ */
+export function safeEntryName(name) {
+  let parts = name.replace(/[\u0000-\u001f\u007f]/g, "_").replaceAll("\\", "/").split("/");
+  for (;;) {
+    parts = parts.filter((p) => p !== "" && p !== "." && p !== "..");
+    if (!/^[A-Za-z]:/.test(parts[0] ?? "")) break;
+    parts[0] = parts[0].slice(2);
+  }
+  return parts.join("/") || "_";
+}
+
+/**
  * The parts of a ZIP archive, in order, for `new Blob(parts)`.
  *
- * @param entries `{ name, data, size, crc, date }[]`: `name` uses `/` between folders;
- *   `data` is a Blob (or Uint8Array) of `size` bytes whose CRC-32 is `crc`; `date` is a
- *   Date. Names must be unique; this function does not check.
+ * @param entries `{ name, data, size, crc, date }[]`: `name` uses `/` between folders and is
+ *   written as `safeEntryName(name)`; `data` is a Blob (or Uint8Array) of `size` bytes whose
+ *   CRC-32 is `crc`; `date` is a Date. Names must be unique after `safeEntryName`; this
+ *   function does not check.
  * @param options `{ forceZip64 }`.
  */
 export function zipParts(entries, { forceZip64 = false } = {}) {
@@ -54,7 +72,7 @@ export function zipParts(entries, { forceZip64 = false } = {}) {
   let offset = 0;
 
   for (const e of entries) {
-    const name = enc.encode(e.name);
+    const name = enc.encode(safeEntryName(e.name));
     const { time, date } = dosDateTime(e.date);
     const big = forceZip64 || e.size >= MAX32;
     // Local header: sizes go in the ZIP64 extra field when they do not fit in 32 bits.
