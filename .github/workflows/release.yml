@@ -1,0 +1,402 @@
+name: Release
+
+# Runs when a version tag (vX.Y.Z) is pushed, or by hand for an existing tag.
+#
+# PATENT GATE. JPEG XS (and TicoRAW) are covered by patents that are licensed per decoder
+# copy, so publishing compiled decoders is on hold pending patent-licensing review. This
+# workflow therefore:
+#   - always checks the tag, runs the full test suite, builds and packages the CLI for
+#     every platform, writes SHA256SUMS and provenance attestations, and keeps the
+#     archives as short-lived workflow artifacts (for testing, not for distribution);
+#   - always creates or updates the GitHub Release, with source code only;
+#   - attaches the binary archives to the Release ONLY when BOTH (a) it is run by hand
+#     (workflow_dispatch) with attach_binaries = yes AND (b) the repository variable
+#     ALLOW_BINARY_DISTRIBUTION is 'true'. The variable is unset today: leave it that way
+#     until the licensing review says otherwise;
+#   - publishes the crates (source) to crates.io only when run by hand with
+#     publish_crates = yes.
+# Maintainer procedure: packaging/README.md.
+#
+# No caches in this workflow: release builds start clean, so a poisoned cache from another
+# workflow cannot end up in an archive.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (for example v0.2.0)"
+        required: true
+        type: string
+      attach_binaries:
+        description: "Attach the binary archives to the Release. Also needs the repository variable ALLOW_BINARY_DISTRIBUTION = 'true' (pending patent-licensing review)."
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      publish_crates:
+        description: "Publish ticoraw, ticoraw-dng, ticoraw-cli (and ticoraw-capi if present) to crates.io"
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: verify tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Tag matches the workspace version and CHANGELOG.md
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(scripts/release/check_version.sh "$TAG")
+          case "$version" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >>"$GITHUB_OUTPUT"
+
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy -p ticoraw --all-targets --no-default-features --locked -- -D warnings
+      - run: scripts/release/test.sh
+      - name: Packages build from their published contents
+        run: cargo publish --workspace --dry-run --locked
+
+  test:
+    name: test (${{ matrix.os }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+      - run: cargo test --workspace --release --locked
+      - run: cargo test -p ticoraw --release --no-default-features --locked
+
+  msrv:
+    name: MSRV (1.85) and wasm32
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: "1.85"
+      - run: cargo check --workspace --all-targets --locked
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - run: cargo +stable build -p ticoraw --no-default-features --target wasm32-unknown-unknown --locked
+      - run: cargo +stable build -p ticoraw-dng --no-default-features --target wasm32-unknown-unknown --locked
+
+  conformance:
+    name: conformance (fresh samples)
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+      # Downloaded afresh (no cache) and checked against the pinned hashes in the manifest.
+      - run: sh conformance/fetch.sh "$RUNNER_TEMP/conformance-samples"
+      - name: Conformance test
+        env:
+          TICORAW_CONFORMANCE_DIR: ${{ runner.temp }}/conformance-samples
+        run: cargo test -p ticoraw --release --locked --test conformance -- --nocapture
+
+  build:
+    # Builds and packages compiled decoders. The archives stay workflow artifacts unless
+    # the patent gate in `attach-binaries` is open.
+    name: build (${{ matrix.target }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-24.04 }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04, musl: true }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, musl: true }
+          # GitHub retires its last Intel macOS image in 2027; then cross-compile this
+          # target on macos-15 and drop the smoke test for it.
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          # Static MSVC runtime: the .exe needs no Visual C++ Redistributable.
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, rustflags: "-C target-feature=+crt-static" }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm, rustflags: "-C target-feature=+crt-static" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # Sigstore signing certificate for the attestation
+      attestations: write
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: Install musl tools
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Build
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.rustflags }}
+        run: cargo build --release --locked -p ticoraw-cli --target "$TARGET"
+
+      - name: Smoke test
+        run: |
+          bin="target/$TARGET/release/ticoraw"
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          got=$("$bin" --version | tr -d '\r')
+          if [ "$got" != "ticoraw $VERSION" ]; then
+            echo "::error::$bin --version printed '$got', expected 'ticoraw $VERSION'"
+            exit 1
+          fi
+          if [ "${TARGET%-musl}" != "$TARGET" ] && ldd "$bin" >/dev/null 2>&1; then
+            echo "::error::$bin is dynamically linked"
+            exit 1
+          fi
+
+      - name: Package
+        id: package
+        run: |
+          bin="target/$TARGET/release/ticoraw"
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          archive=$(scripts/release/package.sh "$VERSION" "$TARGET" "$bin" dist)
+          echo "archive=dist/$(basename "$archive")" >>"$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.package.outputs.archive }}
+
+      # A workflow artifact, kept briefly for testing and for the gated attach step. It
+      # is not a release asset.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ticoraw-${{ matrix.target }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  checksums:
+    name: SHA256SUMS
+    needs: [verify, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ticoraw-*
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum ticoraw-*.tar.gz ticoraw-*.zip | LC_ALL=C sort -k 2 >SHA256SUMS
+          cat SHA256SUMS
+          # One line per entry of the build matrix.
+          test "$(wc -l <SHA256SUMS)" -eq 8
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    # Source-only GitHub Release: notes from CHANGELOG.md, no binary assets. It does not
+    # wait for the binary builds, which are not distributed.
+    name: GitHub Release
+    needs: [verify, test, msrv, conformance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.verify.outputs.tag }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+      # Same condition as the attach-binaries job; only changes the wording of the notes.
+      BINARIES: ${{ github.event_name == 'workflow_dispatch' && inputs.attach_binaries == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - name: Release notes
+        run: |
+          scripts/release/changelog_section.sh "$VERSION" CHANGELOG.md >"$RUNNER_TEMP/notes.md"
+          if [ "$BINARIES" != "true" ]; then
+            cat >>"$RUNNER_TEMP/notes.md" <<EOF
+
+          ---
+
+          **Source only.** Prebuilt binaries are not distributed, pending patent-licensing
+          review (see the [patent notice](https://github.com/$GH_REPO#patent-notice)).
+          Build it with Rust 1.85 or later:
+
+          \`\`\`sh
+          cargo install --git https://github.com/$GH_REPO --tag $TAG ticoraw-cli
+          \`\`\`
+          EOF
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Create or update the release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "ticoraw $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" --prerelease="$PRERELEASE"
+          else
+            gh release create "$TAG" --verify-tag --title "ticoraw $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" --prerelease="$PRERELEASE"
+          fi
+
+  attach-binaries:
+    # PATENT GATE: both a manual run with attach_binaries = yes AND the repository
+    # variable ALLOW_BINARY_DISTRIBUTION = 'true' (unset, pending patent-licensing review).
+    # A tag push can never reach this job. The `binary-distribution` environment can
+    # also be given required reviewers in the repository settings.
+    name: attach binaries (gated)
+    if: github.event_name == 'workflow_dispatch' && inputs.attach_binaries == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+    needs: [verify, release, checksums]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: binary-distribution
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.verify.outputs.tag }}
+    steps:
+      - name: Re-check the gate
+        env:
+          EVENT: ${{ github.event_name }}
+          ATTACH: ${{ inputs.attach_binaries }}
+          ALLOW: ${{ vars.ALLOW_BINARY_DISTRIBUTION }}
+        run: |
+          if [ "$EVENT" != workflow_dispatch ] || [ "$ATTACH" != yes ] || [ "$ALLOW" != true ]; then
+            echo "::error::binary distribution is not enabled (pending patent-licensing review)"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{ticoraw-*,SHA256SUMS}"
+          path: dist
+          merge-multiple: true
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum --check --strict SHA256SUMS
+      - name: Attach to the release
+        run: gh release upload "$TAG" dist/ticoraw-*.tar.gz dist/ticoraw-*.zip dist/SHA256SUMS --clobber
+
+  publish-crates:
+    # Source distribution to crates.io; manual only. Needs the CARGO_REGISTRY_TOKEN secret.
+    name: publish to crates.io
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_crates == 'yes'
+    needs: [verify, test, msrv, conformance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+      - name: cargo publish, in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::the CARGO_REGISTRY_TOKEN secret is not set"
+            exit 1
+          fi
+          members=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[].name')
+          for crate in ticoraw ticoraw-dng ticoraw-cli ticoraw-capi; do
+            if ! printf '%s\n' "$members" | grep -qx "$crate"; then
+              echo "$crate: not in the workspace, skipped"
+              continue
+            fi
+            # Re-runs skip what is already up (crates.io versions are immutable).
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --user-agent "ticoraw-release (https://github.com/$GH_REPO)" \
+              "https://crates.io/api/v1/crates/$crate/$VERSION")
+            if [ "$status" = 200 ]; then
+              echo "$crate $VERSION: already on crates.io, skipped"
+              continue
+            fi
+            # cargo publish waits until the crate is in the index, so the next one resolves.
+            cargo publish --locked -p "$crate"
+          done

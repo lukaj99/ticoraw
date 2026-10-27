@@ -1,0 +1,45 @@
+{
+    "##": [
+        "TEMPLATE - do not submit. Binary installs are gated pending patent-licensing review:",
+        "the archives this points at are attached to a GitHub Release only when the release",
+        "workflow is run by hand with attach_binaries=yes AND the repository variable",
+        "ALLOW_BINARY_DISTRIBUTION is 'true'. See packaging/README.md.",
+        "Fill __VERSION__ and the __SHA256_*__ values from the release's SHA256SUMS."
+    ],
+    "version": "__VERSION__",
+    "description": "Decoder for Nikon High Efficiency (HE/HE*) NEF raw files",
+    "homepage": "https://github.com/lukaj99/ticoraw",
+    "license": "MIT|Apache-2.0",
+    "notes": "ticoraw decodes JPEG XS / TicoRAW codestreams, which are covered by patents. See the patent notice in README.md.",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/lukaj99/ticoraw/releases/download/v__VERSION__/ticoraw-__VERSION__-x86_64-pc-windows-msvc.zip",
+            "hash": "__SHA256_X86_64_WINDOWS__",
+            "extract_dir": "ticoraw-__VERSION__-x86_64-pc-windows-msvc"
+        },
+        "arm64": {
+            "url": "https://github.com/lukaj99/ticoraw/releases/download/v__VERSION__/ticoraw-__VERSION__-aarch64-pc-windows-msvc.zip",
+            "hash": "__SHA256_AARCH64_WINDOWS__",
+            "extract_dir": "ticoraw-__VERSION__-aarch64-pc-windows-msvc"
+        }
+    },
+    "bin": "ticoraw.exe",
+    "checkver": {
+        "github": "https://github.com/lukaj99/ticoraw"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/lukaj99/ticoraw/releases/download/v$version/ticoraw-$version-x86_64-pc-windows-msvc.zip",
+                "extract_dir": "ticoraw-$version-x86_64-pc-windows-msvc"
+            },
+            "arm64": {
+                "url": "https://github.com/lukaj99/ticoraw/releases/download/v$version/ticoraw-$version-aarch64-pc-windows-msvc.zip",
+                "extract_dir": "ticoraw-$version-aarch64-pc-windows-msvc"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS"
+        }
+    }
+}

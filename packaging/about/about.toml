@@ -1,0 +1,42 @@
+# cargo-about configuration for THIRD-PARTY-NOTICES.md.
+# Regenerate with scripts/release/third_party_notices.sh (see packaging/README.md).
+
+# Only what ends up inside the shipped `ticoraw` binary and the published crates:
+# benchmark, test and build-script dependencies are not distributed.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+
+# Must agree with [licenses].allow in deny.toml. For a crate offered under a choice of
+# licences ("MIT OR Apache-2.0"), the first one listed here is the one recorded.
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "IJG",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+# jpeg-encoder ships no IJG licence file: its IJG-derived code (the forward DCT) carries
+# the IJG notice, with the copyright holders, in a source comment. Record that text.
+[jpeg-encoder.clarify]
+license = "(MIT OR Apache-2.0) AND IJG"
+
+[[jpeg-encoder.clarify.files]]
+path = "src/fdct.rs"
+license = "IJG"
+start = "This file was part of the Independent JPEG Group's software:"
+end = "assumed by the product vendor."
+checksum = "934eff290361d447bcfd2a7fee995be91e266edb09dffd195697acd43828be6d"
+
+[[jpeg-encoder.clarify.files]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "4d022727ea392ebba2fe5e9a5f78c610a0eae506b491f3db29c78b6d430d6503"
+
+[[jpeg-encoder.clarify.files]]
+path = "LICENSE-APACHE"
+license = "Apache-2.0"
+checksum = "85a884980abd6032fc6b5439ba918ab16db9ac9051b5cf18db9c27c587df07c0"

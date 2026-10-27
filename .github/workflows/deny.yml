@@ -1,0 +1,84 @@
+name: Supply chain
+
+# cargo-deny (RustSec advisories, licences, duplicate crates, sources) with deny.toml;
+# THIRD-PARTY-NOTICES.md must match the dependency graph; the release scripts must be
+# lint-clean and pass their tests. Runs on pull requests, on pushes to main and weekly,
+# so a new advisory against an unchanged Cargo.lock still shows up.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 6 * * 1" # Mondays 06:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo-deny:
+    name: cargo deny (${{ matrix.checks }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [advisories, bans licenses sources]
+    # A new advisory should not block an unrelated pull request; the weekly and main
+    # runs still fail on it.
+    continue-on-error: ${{ github.event_name == 'pull_request' && matrix.checks == 'advisories' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: cargo-deny@0.20.2
+      - env:
+          CHECKS: ${{ matrix.checks }}
+        run: |
+          # $CHECKS is split into separate check names on purpose.
+          # shellcheck disable=SC2086
+          cargo deny --locked check $CHECKS
+
+  notices:
+    name: THIRD-PARTY-NOTICES.md is current
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: cargo-about@0.9.3
+      - run: scripts/release/third_party_notices.sh --check
+
+  release-scripts:
+    name: release scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: shellcheck,shfmt
+      - run: shellcheck scripts/release/*.sh
+      - run: shfmt -i 2 -d scripts/release/*.sh
+      - run: scripts/release/test.sh

@@ -1,0 +1,9 @@
+# TEMPLATE - do not submit to winget-pkgs. Binary installs are gated pending
+# patent-licensing review; see packaging/README.md. Replace __VERSION__ before use.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
+
+PackageIdentifier: lukaj99.ticoraw
+PackageVersion: __VERSION__
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.10.0
