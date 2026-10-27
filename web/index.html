@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Privacy, enforced: the page may load only its own files and may connect only to the
+      site it came from, so it cannot send photos anywhere else. 'wasm-unsafe-eval' lets it
+      compile its own WebAssembly decoder. No fonts, analytics or CDNs.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; font-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="description"
+      content="Convert Nikon High Efficiency (HE and HE*) raw files to DNG in your browser. Nothing is uploaded."
+    />
+    <!-- %BASE%: build.sh puts a <base href> here when BASE_PATH is set -->
+    <title>NEF to DNG converter: ticoraw</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="src/style.css" />
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the converter</a>
+    <header class="site">
+      <div class="wrap">
+        <p class="brand">ticoraw</p>
+        <h1>Convert Nikon HE raw files to DNG</h1>
+        <p class="lede">
+          Turn Nikon <strong>High Efficiency</strong> (HE and HE*) raw files into DNG files that
+          Lightroom, darktable, RawTherapee and other photo editors can open.
+        </p>
+      </div>
+    </header>
+
+    <main id="main" class="wrap">
+      <section class="privacy" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">Your photos stay on your computer</h2>
+        <p>
+          The conversion runs inside this browser tab. Nothing is uploaded. The page's security
+          policy only lets it load its own files, so it cannot send your photos anywhere. Your
+          NEF files are never changed.
+        </p>
+      </section>
+
+      <noscript>
+        <p class="notice">This converter needs JavaScript and WebAssembly. Please turn them on.</p>
+      </noscript>
+      <p id="fatal" class="notice" role="alert" hidden></p>
+
+      <section aria-labelledby="add-title">
+        <h2 id="add-title"><span class="step">1</span> Add your NEF files</h2>
+        <div id="drop" class="drop">
+          <p class="drop-hint">Drag NEF files or whole folders here, or</p>
+          <div class="buttons">
+            <button type="button" id="pick-files-button">Choose files</button>
+            <button type="button" id="pick-folder-button">Choose a folder</button>
+          </div>
+          <p class="small">Other files in a folder, such as JPEGs, are left out.</p>
+          <input id="pick-files" type="file" multiple accept=".nef,.NEF,.nrw,.NRW" hidden />
+          <input id="pick-folder" type="file" webkitdirectory hidden />
+        </div>
+      </section>
+
+      <section aria-labelledby="options-title">
+        <h2 id="options-title"><span class="step">2</span> Check the options</h2>
+        <form id="options" class="options">
+          <fieldset>
+            <legend>Raw data</legend>
+            <label><input type="radio" name="compression" value="lossless-jpeg" checked />
+              Lossless compression (smaller files, recommended)</label>
+            <label><input type="radio" name="compression" value="uncompressed" />
+              Uncompressed (about twice as large, for tools that need it)</label>
+          </fieldset>
+          <fieldset>
+            <legend>Preview</legend>
+            <label><input type="radio" name="preview" value="auto" checked />
+              Full-size preview, so photo browsers show the picture (recommended)</label>
+            <label><input type="radio" name="preview" value="none" />
+              Small thumbnail only (files about 1 MB smaller)</label>
+          </fieldset>
+          <fieldset>
+            <legend>Metadata</legend>
+            <label><input type="checkbox" name="keepXmp" checked />
+              Copy the NEF's XMP metadata, such as the rating set in the camera</label>
+            <p class="small">
+              Camera settings, lens, date and GPS position (when the camera recorded one) are
+              always kept.
+            </p>
+          </fieldset>
+          <fieldset>
+            <legend>Where the DNGs go</legend>
+            <label><input type="radio" name="output" value="page" checked />
+              Keep them here, then download them one by one or as one ZIP file</label>
+            <label id="folder-option"><input type="radio" name="output" value="folder" />
+              Save each one straight into a folder you choose</label>
+            <p id="folder-note" class="small" hidden>
+              Saving into a folder needs a browser such as Chrome or Edge on a computer.
+            </p>
+            <p id="folder-chosen" class="small" hidden></p>
+          </fieldset>
+        </form>
+        <p id="workers" class="small"></p>
+      </section>
+
+      <section aria-labelledby="queue-title">
+        <h2 id="queue-title"><span class="step">3</span> Convert and download</h2>
+        <div class="toolbar">
+          <button type="button" id="convert" class="primary" disabled>Convert</button>
+          <button type="button" id="stop" hidden>Stop</button>
+          <button type="button" id="zip" disabled>Download all as ZIP</button>
+          <button type="button" id="clear" disabled>Clear the list</button>
+        </div>
+        <div class="progress">
+          <progress id="progress" max="1" value="0" aria-labelledby="summary"></progress>
+          <p id="summary" role="status" aria-live="polite">No files yet.</p>
+          <p id="ignored" class="small" hidden></p>
+        </div>
+        <div class="table-wrap">
+          <table id="queue" hidden>
+            <caption class="visually-hidden">Files and their conversion status</caption>
+            <thead>
+              <tr>
+                <th scope="col">File</th>
+                <th scope="col">Camera</th>
+                <th scope="col">Status</th>
+                <th scope="col">DNG</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="next-title">
+        <h2 id="next-title"><span class="step">4</span> Open the DNGs in your editor</h2>
+        <p>
+          Import or open the DNG files as you would any raw file: in Lightroom, Photoshop
+          (Camera Raw), darktable, RawTherapee or another editor that reads DNG. Keep your NEF
+          files too; they are your originals.
+        </p>
+      </section>
+
+      <section class="faq" aria-labelledby="faq-title">
+        <h2 id="faq-title">Good to know</h2>
+        <details>
+          <summary>What are HE and HE*?</summary>
+          <p>
+            Recent Nikon Z cameras can save raw photos in <strong>High Efficiency</strong> (HE) or
+            <strong>High Efficiency*</strong> (HE*) mode. The files are smaller, but they use a
+            newer compression, TicoRAW (based on JPEG XS), that many editors cannot read yet.
+            DNG is an open raw format that almost every editor reads.
+          </p>
+          <p>
+            Files saved in Nikon's classic modes (lossless, lossy or uncompressed) need no
+            conversion: your editor already opens them, and this page tells you so.
+          </p>
+        </details>
+        <details>
+          <summary>Which cameras work?</summary>
+          <p>
+            The Nikon Z 9, Z 8, Z f, Z6III, Z 5 II, Z 50 II and ZR. On public sample files from
+            each of them, the raw image in the DNG is identical, bit for bit, to the one Adobe DNG
+            Converter writes. Other cameras may work too; if yours is not listed, please
+            <a href="https://github.com/lukaj99/ticoraw/issues/new?template=camera_support.yml"
+              target="_blank" rel="noopener">tell us about it<span class="visually-hidden">
+              (opens in a new tab)</span></a>.
+          </p>
+        </details>
+        <details>
+          <summary>What is in the DNG?</summary>
+          <p>
+            The exact raw data your camera recorded, with its settings, lens, date, GPS position
+            (if any), Nikon's own metadata and a preview. It is not a processed picture: your editor still
+            does the demosaicing, white balance and colour, just as with the NEF.
+          </p>
+        </details>
+        <details>
+          <summary>How big a batch can I convert?</summary>
+          <p>
+            Your browser holds the converted files until you download them, so very large
+            batches need plenty of free memory and disk space. Saving straight into a folder
+            avoids that. For whole memory cards, the <code>ticoraw</code> command-line tool is
+            faster.
+          </p>
+        </details>
+        <p>
+          <a id="docs-link" href="%DOCS_URL%" target="_blank" rel="noopener">More questions and
+            help<span class="visually-hidden"> (opens in a new tab)</span></a>
+        </p>
+      </section>
+
+      <section id="patent-notice" class="patent" aria-labelledby="patent-title">
+        <h2 id="patent-title">Patent notice</h2>
+        <p>
+          JPEG XS, the compression inside HE and HE* files, is covered by essential patents that
+          are licensed through a patent pool, and intoPIX describes TicoRAW as patented. The MIT
+          and Apache-2.0 licences of ticoraw cover its copyright only; they do not grant, and
+          cannot grant, any patent licence.
+        </p>
+        <p>
+          For this reason the project does not distribute compiled decoders, including a hosted
+          copy of this converter, while patent licensing is reviewed. The converter is published
+          as source code that you build and run yourself. You are responsible for checking
+          whether you need a patent licence where you live. This is not legal advice.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap">
+        <p>
+          <span id="version">ticoraw</span> (build %BUILD%) ·
+          Licensed under MIT or Apache-2.0 ·
+          <a href="#patent-notice">Patent notice</a> ·
+          <a href="https://github.com/lukaj99/ticoraw" target="_blank" rel="noopener">Source
+            code<span class="visually-hidden"> (opens in a new tab)</span></a>
+        </p>
+        <p class="small">
+          Nikon is a trademark of Nikon Corporation; intoPIX and TicoRAW are trademarks of
+          intoPIX SA; Adobe, Lightroom and DNG are trademarks of Adobe Inc. This project is
+          independent and not affiliated with any of them. The DNG preview encoder is based in
+          part on the work of the Independent JPEG Group.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

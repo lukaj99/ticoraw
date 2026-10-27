@@ -1,0 +1,102 @@
+name: Web converter
+
+# Builds the in-browser converter (web/: plain HTML, CSS and ES modules over the
+# crates/ticoraw-wasm package) and tests it: unit tests in Node.js, then end-to-end tests in
+# headless Chromium that convert public conformance samples through the page and check
+# every DNG's CFA SHA-256 against conformance/manifest.toml, plus accessibility (axe-core)
+# and Content-Security-Policy checks.
+#
+# PATENT GATE: the built app contains the compiled decoder, and compiled decoders are NOT
+# distributed, pending patent-licensing review (JPEG XS is licensed per decoder copy
+# through a patent pool). This workflow therefore only tests: it has no deploy job and
+# uploads nothing, no build output, no Playwright traces or reports (a trace embeds the
+# page's files, the wasm included). Any future deployment must be gated on the repository
+# variable ALLOW_BINARY_DISTRIBUTION == 'true' and a manual dispatch.
+
+on:
+  push:
+    paths:
+      - "web/**"
+      - "crates/ticoraw/**"
+      - "crates/ticoraw-dng/**"
+      - "crates/ticoraw-wasm/**"
+      - "conformance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "crates/ticoraw/**"
+      - "crates/ticoraw-dng/**"
+      - "crates/ticoraw-wasm/**"
+      - "conformance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: build and test (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: Check build.sh
+        run: shellcheck web/build.sh
+
+      - name: Install test dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: web
+        run: npm run test:unit
+
+      - name: Build the converter
+        run: sh web/build.sh
+
+      # conformance.yml keeps the samples in the Actions cache; this job only reads it.
+      - name: Restore conformance samples
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/conformance-samples
+          key: conformance-samples-${{ hashFiles('conformance/manifest.toml') }}
+          restore-keys: conformance-samples-
+
+      - name: Fetch conformance samples
+        run: sh conformance/fetch.sh "$RUNNER_TEMP/conformance-samples"
+
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        working-directory: web
+        env:
+          TICORAW_SAMPLES: ${{ runner.temp }}/conformance-samples
+        run: npx playwright test
