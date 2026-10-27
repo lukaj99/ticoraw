@@ -1,0 +1,147 @@
+name: WebAssembly
+
+# Builds the `ticoraw` npm package (crates/ticoraw-wasm: wasm-bindgen, targets web and
+# nodejs, plus the Web Worker pool) and tests it in Node.js: the wasm-bindgen tests, the
+# public conformance samples (CFA SHA-256 of every decode and of every toDng round trip) and
+# the worker pool. The package is kept as a workflow artifact only.
+#
+# PATENT GATE: compiled decoders (binaries, wheels, npm packages, hosted web apps) are NOT
+# published, pending patent-licensing review (JPEG XS is licensed per decoder copy through
+# a patent pool). The `publish` job below runs only when BOTH
+#   1. someone starts this workflow by hand with the `publish` input ticked, AND
+#   2. the repository variable ALLOW_BINARY_DISTRIBUTION is 'true' (unset today).
+# Do not loosen either condition until that review is done. The package is also marked
+# "private", which the job removes only after re-checking the gate.
+
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "conformance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/wasm.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "conformance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/wasm.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: >-
+          Publish the package to npm. Only takes effect when the repository variable
+          ALLOW_BINARY_DISTRIBUTION is 'true' (pending patent-licensing review).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  build:
+    name: build and test (Node.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: Native unit tests
+        run: cargo test -p ticoraw-wasm --release
+
+      - name: wasm-bindgen tests in Node.js
+        run: wasm-pack test --node --release crates/ticoraw-wasm
+
+      - name: Build the npm package
+        run: sh crates/ticoraw-wasm/scripts/build.sh "$RUNNER_TEMP/pkg"
+
+      # conformance.yml keeps the samples in the Actions cache; this job only reads it.
+      - name: Restore conformance samples
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/conformance-samples
+          key: conformance-samples-${{ hashFiles('conformance/manifest.toml') }}
+          restore-keys: conformance-samples-
+
+      - name: Fetch conformance samples
+        run: sh conformance/fetch.sh "$RUNNER_TEMP/conformance-samples"
+
+      - name: Conformance in Node.js (single-threaded wasm)
+        run: >-
+          node crates/ticoraw-wasm/scripts/conformance.mjs
+          "$RUNNER_TEMP/pkg" "$RUNNER_TEMP/conformance-samples"
+
+      - name: Worker pool
+        run: >-
+          node crates/ticoraw-wasm/scripts/worker-test.mjs
+          "$RUNNER_TEMP/pkg" "$RUNNER_TEMP/conformance-samples/z5ii_he_dx.nef"
+
+      - name: Check the package contents
+        working-directory: ${{ runner.temp }}/pkg
+        run: npm pack --dry-run
+
+      # A workflow artifact for review and testing, not a release.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticoraw-npm-package
+          path: ${{ runner.temp }}/pkg
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    name: publish to npm (gated)
+    needs: build
+    # PATENT GATE: both a manual run with `publish` ticked and the repository variable.
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish &&
+      vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - name: Re-check the patent gate
+        env:
+          ALLOW_BINARY_DISTRIBUTION: ${{ vars.ALLOW_BINARY_DISTRIBUTION }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [ "$ALLOW_BINARY_DISTRIBUTION" != true ] || [ "$PUBLISH" != true ]; then
+            echo "Binary distribution is not allowed (pending patent-licensing review)." >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: ticoraw-npm-package
+          path: pkg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Publish
+        working-directory: pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm pkg delete private
+          npm publish --provenance --access public
