@@ -71,7 +71,7 @@ on usage errors.
 ## Details worth knowing
 
 - **What the DNG holds.** The mosaic in lossless JPEG tiles (`--uncompressed` writes one
-  plain strip, about three times larger), the camera's EXIF, GPS, XMP and MakerNote, a
+  plain strip, about 1.7 to 2.6 times larger), the camera's EXIF, GPS, XMP and MakerNote, a
   thumbnail, a preview at least 1024 pixels on its long side (`--no-preview` leaves it
   out), the as-shot white balance and the NEF's file name as `OriginalRawFileName`. Colour
   matrix, levels, `BaselineExposure`, default crop, orientation and `UniqueCameraModel`
@@ -79,17 +79,24 @@ on usage errors.
   the [ticoraw-dng README](https://github.com/lukaj99/ticoraw/blob/main/crates/ticoraw-dng/README.md).
 - **Sidecars.** `convert --with-sidecar` uses the `<name>.xmp` file next to each NEF (as
   Lightroom, Bridge or Capture One write it) as the DNG's XMP instead of the NEF's own.
+  Only a regular file (or a link to one) of at most 16 MB is read; anything else fails
+  that NEF.
 - **Where DNGs go.** Next to each NEF, or with `-o` under that folder. Files found in a
   given folder keep their path relative to it, so a card's `100NCZ_6` folders reappear
   under the output folder.
-- **Several files at once.** `convert` runs up to 4 files at a time by default (at most one
-  per 2 GB of memory); each file already uses every core. `-j` changes that.
+- **Several files at once.** `convert` runs up to 4 files at a time by default (on Linux and
+  macOS, at most one per 2 GB of memory; on Windows only the core count limits it); each
+  file already uses every core. `-j` changes that.
 - **JSON Lines.** `convert --json` prints one JSON object per line: a `start` event, then
   `converted`, `skipped` or `failed` for each file, then a `summary`.
 - **Writes are atomic.** DNGs and PGMs are written to a temporary file next to the output,
   then renamed into place (`--force`) or hard-linked only if the output does not exist
-  yet. A failed write never leaves a partial file or destroys an existing one. The tool
-  never writes over its input (on Unix, also when the output is a hard link to it).
+  yet. A failed write never leaves a partial file or destroys an existing one, and an
+  interrupted run (Ctrl-C, or a termination signal) removes the temporary files it was
+  writing. Only a run killed outright (`kill -9`, a crash, a power cut) can leave one,
+  named `.<name>.dng.ticoraw-<pid>.tmp`; `convert` removes those from the folders it writes
+  to once they are a day old. The tool never writes over its input (on Unix, also when the
+  output is a hard link to it).
 - **Inputs are only read.** `scan` opens regular files only and, without `--decode`, reads
   just the start of each file. With `--recursive`, symbolic links to folders are skipped.
 - **Unknown bodies.** A model without a built-in colour profile still decodes, with a

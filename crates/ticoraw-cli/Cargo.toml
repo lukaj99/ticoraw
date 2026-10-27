@@ -13,16 +13,19 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# Compiled builds of this tool contain the decoder. Publishing them (release assets,
-# installers, package registries) is pending patent-licensing review: CI may build and test
-# the binary and keep it as a workflow artifact, but every publish step must require both a
-# manual workflow_dispatch input and the repository variable ALLOW_BINARY_DISTRIBUTION ==
-# 'true'.
+# Compiled builds of this tool contain the decoder. Distributing them is pending
+# patent-licensing review. CI may build and test the binary, but must not hand it out:
+# uploading it as a workflow artifact (public artifacts can be downloaded by any signed-in
+# user), attesting it or listing it in SHA256SUMS requires the repository variable
+# ALLOW_BINARY_DISTRIBUTION == 'true', and attaching it to a release or any other publish
+# step requires a manual workflow_dispatch input as well. See packaging/README.md.
 [[bin]]
 name = "ticoraw"
 path = "src/main.rs"
 
 [dependencies]
+ctrlc = { version = "3.5.2", features = ["termination"] }
+terminal_size = "0.4.4"
 ticoraw = { path = "../ticoraw", version = "0.1.0" }
 ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0" }
 

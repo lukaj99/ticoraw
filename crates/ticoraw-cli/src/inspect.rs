@@ -7,9 +7,9 @@ use std::process::ExitCode;
 
 use ticoraw::{CodestreamInfo, NefInspection, NikonCompression, RawCodec};
 
-use crate::CliError;
 use crate::args::{Arg, Args};
 use crate::json::Json;
+use crate::{CliError, printable, shown};
 
 pub const HELP: &str = "\
 Describe NEF containers and TicoRAW codestreams without decoding pixels
@@ -64,7 +64,7 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
             entries.push(match &result {
                 Ok(info) => to_json(path, info),
                 Err(e) => {
-                    eprintln!("ticoraw: error: {}: {e}", path.display());
+                    eprintln!("ticoraw: error: {}: {}", shown(path), printable(e));
                     Json::Object(vec![
                         ("path", Json::str(path.to_string_lossy())),
                         ("error", Json::str(e)),
@@ -80,7 +80,7 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
                 }
                 out.write_all(to_text(path, &info).as_bytes())?;
             }
-            Err(e) => eprintln!("ticoraw: error: {}: {e}", path.display()),
+            Err(e) => eprintln!("ticoraw: error: {}: {}", shown(path), printable(&e)),
         }
     }
     if o.json {
@@ -124,8 +124,13 @@ fn to_text(path: &Path, i: &NefInspection) -> String {
 }
 
 fn write_text(s: &mut String, path: &Path, i: &NefInspection) -> std::fmt::Result {
-    writeln!(s, "{}", path.display())?;
-    writeln!(s, "  camera       {} {}", i.make, i.model)?;
+    writeln!(s, "{}", shown(path))?;
+    writeln!(
+        s,
+        "  camera       {} {}",
+        printable(&i.make),
+        printable(&i.model)
+    )?;
     writeln!(
         s,
         "  dimensions   {} x {}, {} bits/sample",
@@ -185,7 +190,7 @@ fn write_codestream(s: &mut String, cs: &CodestreamInfo) -> std::fmt::Result {
     )?;
     match &cs.unsupported {
         None => writeln!(s, "               profile supported"),
-        Some(why) => writeln!(s, "               profile UNSUPPORTED: {why}"),
+        Some(why) => writeln!(s, "               profile UNSUPPORTED: {}", printable(why)),
     }
 }
 
@@ -283,6 +288,18 @@ mod tests {
         assert!(t.contains("Lossless compressed [code 3]"));
         assert!(t.contains("black level  1008 1008 1008 1008"));
         assert!(!t.contains("codestream"));
+
+        let evil = NefInspection {
+            model: "\x1b[2JX".into(),
+            ..classic()
+        };
+        let t = to_text(Path::new("\x1b]0;b.nef"), &evil);
+        assert!(!t.contains('\x1b'), "{t:?}");
+        assert!(t.starts_with(r"\u{1b}]0;b.nef"), "{t:?}");
+        assert!(
+            t.contains(r"camera       NIKON CORPORATION \u{1b}[2JX"),
+            "{t:?}"
+        );
     }
 
     #[test]

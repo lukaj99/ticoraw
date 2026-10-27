@@ -459,6 +459,235 @@ fn report_is_privacy_safe() {
     );
 }
 
+#[test]
+fn convert_skips_a_classic_nef_whose_dng_exists() {
+    let dir = scratch("convert_classic_existing");
+    std::fs::write(dir.join("DSC_0132.nef"), synthetic::classic_nef()).unwrap();
+    std::fs::write(dir.join("DSC_0132.dng"), b"from another converter").unwrap();
+    for flags in [&[][..], &["--force"], &["--skip-existing"]] {
+        let mut args = vec!["convert"];
+        args.extend_from_slice(flags);
+        args.push(s(&dir));
+        let o = ticoraw(&args);
+        assert_eq!(code(&o), 0, "{flags:?}: {}", stdout(&o));
+        assert!(stdout(&o).contains("classic NEF"), "{}", stdout(&o));
+        assert!(stdout(&o).contains("1 skipped, 0 failed"), "{}", stdout(&o));
+    }
+    assert_eq!(
+        std::fs::read(dir.join("DSC_0132.dng")).unwrap(),
+        b"from another converter"
+    );
+}
+
+/// The file names in `dir` that look like `convert`'s temporary files.
+#[cfg(unix)]
+fn temp_files(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".ticoraw-"))
+        .collect()
+}
+
+/// Runs `ticoraw args`, killing it if it has not finished within `limit`.
+#[cfg(unix)]
+fn ticoraw_within(args: &[&str], limit: std::time::Duration) -> Option<Output> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ticoraw"))
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("run ticoraw");
+    let deadline = std::time::Instant::now() + limit;
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    Some(child.wait_with_output().unwrap())
+}
+
+/// A FIFO or a link to /dev/zero named like a sidecar must fail that file, not hang the run
+/// or read without end.
+#[cfg(unix)]
+#[test]
+fn convert_refuses_special_sidecars() {
+    let dir = scratch("convert_special_sidecar");
+    std::fs::write(dir.join("a.NEF"), synthetic::he_nef(1)).unwrap();
+    std::fs::write(dir.join("b.NEF"), synthetic::he_nef(2)).unwrap();
+    let made = Command::new("mkfifo")
+        .arg(dir.join("a.xmp"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    std::os::unix::fs::symlink("/dev/zero", dir.join("b.xmp")).unwrap();
+    let out = dir.join("out");
+    let o = ticoraw_within(
+        &[
+            "convert",
+            "--with-sidecar",
+            "--json",
+            s(&dir),
+            "-o",
+            s(&out),
+        ],
+        std::time::Duration::from_secs(60),
+    )
+    .expect("convert finishes");
+    assert_eq!(code(&o), 1);
+    let failed = events(&o, "failed");
+    assert_eq!(failed.len(), 2, "{}", stdout(&o));
+    assert!(
+        failed.iter().all(|f| f.contains("not a regular file")),
+        "{failed:?}"
+    );
+}
+
+/// Text output escapes control characters taken from a file (its camera model, its name),
+/// so a crafted NEF cannot clear the screen or forge output lines.
+#[cfg(unix)]
+#[test]
+fn text_output_escapes_control_characters() {
+    let dir = scratch("escapes");
+    let mut nef = synthetic::he_nef(3);
+    let model = b"NIKON Z6_3";
+    let at = nef
+        .windows(model.len())
+        .position(|w| w == model)
+        .expect("model string");
+    nef[at..at + model.len()].copy_from_slice(b"\x1b[2J\x1b[31mX");
+    let path = dir.join("evil.NEF");
+    std::fs::write(&path, nef).unwrap();
+    // Not a NEF, so it fails with its (escaped) name in the error lines and summaries.
+    let junk = dir.join("\x1b[2Kjunk\n.nef");
+    std::fs::write(&junk, b"not a TIFF").unwrap();
+    let dng = dir.join("evil.dng");
+    for args in [
+        vec!["scan", s(&dir)],
+        vec!["inspect", s(&path), s(&junk)],
+        vec!["decode", s(&path), "-o", s(&dng)],
+        vec!["decode", s(&junk)],
+        vec!["verify", s(&junk), s(&dng)],
+        vec!["convert", "--force", s(&dir)],
+    ] {
+        let o = ticoraw(&args);
+        let out = stdout(&o);
+        assert!(!o.stdout.contains(&0x1b), "{args:?}: {out}");
+        assert!(!o.stderr.contains(&0x1b), "{args:?}: {}", stderr(&o));
+        if ["scan", "inspect", "convert"].contains(&args[0]) {
+            let all = out.clone() + &stderr(&o);
+            assert!(all.contains(r"\u{1b}[2Kjunk\u{a}.nef"), "{args:?}: {all}");
+        }
+        if ["scan", "inspect"].contains(&args[0]) || args.contains(&"-o") {
+            assert!(out.contains(r"\u{1b}[2J"), "{args:?}: {out}");
+        }
+    }
+}
+
+/// Copies of `nefs` (cycled) as `count` inputs in a fresh `<name>/in`.
+#[cfg(unix)]
+fn convert_inputs(name: &str, nefs: &[Vec<u8>], count: usize) -> PathBuf {
+    let dir = scratch(name);
+    let input = dir.join("in");
+    std::fs::create_dir(&input).unwrap();
+    for i in 0..count {
+        std::fs::write(input.join(format!("f{i:03}.NEF")), &nefs[i % nefs.len()]).unwrap();
+    }
+    dir
+}
+
+/// Interrupts `convert` at several points; no temporary file may be left behind, and a run
+/// that was interrupted exits with 130. Returns how many runs were interrupted (rather than
+/// done before the signal came).
+#[cfg(unix)]
+fn assert_interrupt_leaves_no_temp_files(dir: &Path, delays_ms: &[u64]) -> usize {
+    let input = dir.join("in");
+    let mut interrupted = 0;
+    for (round, &delay) in delays_ms.iter().enumerate() {
+        let out = dir.join(format!("out{round}"));
+        let child = Command::new(env!("CARGO_BIN_EXE_ticoraw"))
+            .args([
+                "convert",
+                "--uncompressed",
+                "-j",
+                "4",
+                s(&input),
+                "-o",
+                s(&out),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(delay));
+        let killed = Command::new("kill")
+            .args(["-INT", &child.id().to_string()])
+            .status()
+            .unwrap();
+        assert!(killed.success());
+        let o = child.wait_with_output().unwrap();
+        // 0: finished first; no code: interrupted before the handler was installed.
+        let status = o.status.code();
+        assert!(
+            matches!(status, Some(0 | 130) | None),
+            "{status:?}: {}",
+            stderr(&o)
+        );
+        if status == Some(130) {
+            assert!(stderr(&o).contains("interrupted"), "{}", stderr(&o));
+            interrupted += 1;
+        }
+        if out.exists() {
+            let left = temp_files(&out);
+            assert!(left.is_empty(), "after {delay} ms: {left:?}");
+        }
+    }
+    interrupted
+}
+
+#[cfg(unix)]
+#[test]
+fn interrupted_convert_leaves_no_temp_files() {
+    let nefs: Vec<Vec<u8>> = (1..=4).map(synthetic::he_nef).collect();
+    let dir = convert_inputs("interrupt", &nefs, 400);
+    // How many runs finish first depends on the machine's speed; none may leave a file.
+    assert_interrupt_leaves_no_temp_files(&dir, &[30, 80, 150, 300]);
+}
+
+#[test]
+fn convert_removes_only_stale_temp_files() {
+    let dir = scratch("stale_temps");
+    std::fs::write(dir.join("a.NEF"), synthetic::he_nef(1)).unwrap();
+    let stale = dir.join(".b.dng.ticoraw-4242.tmp");
+    let fresh = dir.join(".c.dng.ticoraw-4243.tmp");
+    let other = dir.join(".notes.tmp");
+    for p in [&stale, &fresh, &other] {
+        std::fs::write(p, b"partial").unwrap();
+    }
+    let two_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+    for p in [&stale, &other] {
+        std::fs::File::options()
+            .write(true)
+            .open(p)
+            .unwrap()
+            .set_modified(two_days_ago)
+            .unwrap();
+    }
+    let o = ticoraw(&["convert", s(&dir)]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    assert!(
+        stderr(&o).contains("removed 1 temporary file"),
+        "{}",
+        stderr(&o)
+    );
+    assert!(!stale.exists());
+    assert!(fresh.exists(), "may still be being written");
+    assert!(other.exists(), "not ours");
+}
+
 /// The corpus directory, or `None` (with a note) when `TICORAW_CORPUS` is unset.
 fn corpus(test: &str) -> Option<PathBuf> {
     match std::env::var_os("TICORAW_CORPUS") {
@@ -683,4 +912,24 @@ fn corpus_convert_and_report() {
     for p in &personal {
         assert!(!json.contains(p.as_str()), "{p} leaked into {json}");
     }
+}
+
+/// Full-size frames written uncompressed take long enough that an interruption usually
+/// lands while a DNG is being written.
+#[cfg(unix)]
+#[test]
+fn corpus_interrupted_convert_leaves_no_temp_files() {
+    let Some(Pair { nef, other, .. }) = corpus_pair("corpus_interrupted_convert") else {
+        return;
+    };
+    let dir = scratch("interrupt_corpus");
+    let input = dir.join("in");
+    std::fs::create_dir(&input).unwrap();
+    let other = other.unwrap_or_else(|| nef.clone());
+    for i in 0..12 {
+        let f = if i % 2 == 0 { &nef } else { &other };
+        std::os::unix::fs::symlink(f, input.join(format!("f{i:02}.NEF"))).unwrap();
+    }
+    let interrupted = assert_interrupt_leaves_no_temp_files(&dir, &[100, 200, 400, 700, 1000]);
+    assert!(interrupted > 0, "every run finished before the signal");
 }

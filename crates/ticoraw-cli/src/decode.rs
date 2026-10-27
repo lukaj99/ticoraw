@@ -1,6 +1,5 @@
 //! `ticoraw decode`: one NEF -> complete DNG (via `ticoraw-dng`) or 16-bit PGM.
 
-use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -10,7 +9,7 @@ use ticoraw::CfaImage;
 use ticoraw_dng::{CarriedMetadata, Compression, Preview};
 
 use crate::args::{Arg, Args};
-use crate::{CliError, ms, read_input, unexpected};
+use crate::{CliError, interrupt, ms, printable, read_input, shown, unexpected};
 
 pub const HELP: &str = "\
 Decode one NEF to a complete DNG (or a 16-bit PGM)
@@ -21,13 +20,16 @@ Decodes the High Efficiency (TicoRAW) raw strip and writes a complete DNG: the C
 lossless JPEG tiles, the camera's EXIF, GPS, XMP and MakerNote, a preview and a thumbnail,
 the colour matrix, as-shot white balance, orientation and default crop, and the input's
 file name as OriginalRawFileName. A PGM is the bare mosaic as big-endian 16-bit samples
-(maxval 16383 for 14-bit data, else 65535). Output is written atomically and never
-overwrites the input. To convert many files, use `ticoraw convert`.
+(maxval 16383 for 14-bit data, else 65535). Output is written atomically (a temporary file
+.<name>.ticoraw-<pid>.tmp next to it, then a rename; an interruption such as Ctrl-C
+removes the temporary file) and never overwrites the input. To convert many files, use
+`ticoraw convert`.
 
 Options:
   -o, --output <path>    Output file [default: the input path with a .dng/.pgm extension]
   --format <dng|pgm>     Output format [default: dng]
-  --uncompressed         Store the DNG's mosaic uncompressed (about three times larger)
+  --uncompressed         Store the DNG's mosaic uncompressed (2 bytes per pixel: about
+                         1.7 to 2.6 times the size of the default DNG)
   --no-preview           Leave out the DNG's embedded preview (the thumbnail stays)
   -f, --force            Overwrite an existing output file
   -h, --help             Show this help
@@ -121,6 +123,7 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
         )));
     }
 
+    interrupt::install();
     let t0 = Instant::now();
     let nef = read_input(&o.input)?;
     let t_read = t0.elapsed();
@@ -167,12 +170,12 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
     let mp = (img.width * img.height) as f64 / 1e6;
     let c = &raw.color;
     let mut out = io::stdout().lock();
-    writeln!(out, "{} -> {}", o.input.display(), output.display())?;
+    writeln!(out, "{} -> {}", shown(&o.input), shown(&output))?;
     writeln!(
         out,
         "  {} {}, {} x {} CFA {}, black {:?}, white {}",
-        raw.make,
-        raw.model,
+        printable(&raw.make),
+        printable(&raw.model),
         img.width,
         img.height,
         c.cfa_pattern
@@ -216,7 +219,8 @@ pub fn same_file(a: &Path, b: &Path) -> bool {
 
 /// Writes `bytes` to `path` atomically: everything goes to a temporary file in the same
 /// directory first, which then replaces `path` (`force`) or is linked in only if `path`
-/// does not exist yet. A failed write never leaves a partial file or destroys an old one.
+/// does not exist yet. A failed write never leaves a partial file or destroys an old one,
+/// and an interruption removes the temporary file (see [`interrupt`]).
 pub fn write_output(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliError> {
     let exists = || {
         CliError::Failure(format!(
@@ -230,12 +234,9 @@ pub fn write_output(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliErr
     let name = path
         .file_name()
         .map_or_else(|| "output".into(), |n| n.to_string_lossy());
-    let tmp = path.with_file_name(format!(".{name}.ticoraw-{}.tmp", std::process::id()));
+    let tmp = path.with_file_name(interrupt::temp_name(&name));
     let result = (|| -> Result<(), CliError> {
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
+        let mut f = interrupt::create_temp(&tmp)
             .map_err(|e| CliError::Failure(format!("creating {}: {e}", tmp.display())))?;
         f.write_all(bytes)
             .and_then(|()| f.sync_all())
@@ -264,6 +265,7 @@ pub fn write_output(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliErr
     })();
     // Gone already after a rename; otherwise clean up the temporary file.
     let _ = std::fs::remove_file(&tmp);
+    interrupt::forget(&tmp);
     result
 }
 
