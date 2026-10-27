@@ -1,8 +1,10 @@
 //! Metadata carried from a NEF into its DNG: EXIF, Interoperability and GPS fields, IFD0
 //! descriptive tags, XMP, the Nikon MakerNote and the camera's embedded JPEG preview.
 
+use std::collections::HashSet;
+
 use ticoraw::container;
-use ticoraw::tiff::{self, ByteOrder, Ifd, Tiff};
+use ticoraw::tiff::{self, ByteOrder, Entry, Ifd, Tiff};
 
 use crate::Error;
 
@@ -64,6 +66,24 @@ pub struct CarriedPreview {
 ///
 /// [`CarriedMetadata::from_nef`] fills it from a NEF; [`CarriedMetadata::default`] carries
 /// nothing (a little-endian DNG with only the tags derived from [`ticoraw::DecodedRaw`]).
+///
+/// # Size limits
+///
+/// A TIFF entry only has to point inside the file, so a modified NEF can make thousands of
+/// entries share one large value. To keep memory and output proportional to a normal
+/// conversion, both [`CarriedMetadata::from_nef`] and [`write()`](crate::write) carry, for
+/// [`ifd0`](Self::ifd0), [`exif`](Self::exif), [`interop`](Self::interop) and
+/// [`gps`](Self::gps) in that order:
+///
+/// - only the first field of each tag in a list (TIFF readers use the first one as well);
+/// - at most [`MAX_CARRIED_FIELDS`] fields per list;
+/// - a field only while its value fits in what is left of [`MAX_CARRIED_FIELD_BYTES`],
+///   shared by the four lists.
+///
+/// The MakerNote is carried up to [`MAX_CARRIED_MAKER_NOTE`] bytes and the XMP packet up to
+/// [`MAX_CARRIED_XMP`] bytes. Fields and packets past a limit are dropped, not reported as
+/// errors: the limits are far above anything a camera writes, so only a crafted file reaches
+/// them, and its image still converts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CarriedMetadata {
     /// Byte order of every [`RawField`] and of the MakerNote. The DNG is written in this
@@ -109,12 +129,56 @@ pub(crate) const MIN_CARRIED_PREVIEW: usize = 1024;
 /// Pointer tags whose values are offsets into the source file and cannot be copied.
 const POINTER_TAGS: [u16; 6] = [0x0111, 0x014A, 0x0201, 0x8769, 0x8825, 0xA005];
 
+// Limits on carried metadata; see "Size limits" on [`CarriedMetadata`]. Measured on 1638
+// Nikon NEFs (a photo library plus the HE/HE* test files), the largest values were: 40 EXIF, 11 GPS
+// and 3 descriptive IFD0 fields, 513 bytes of field values in all (the largest field 65
+// bytes), a 231 KB MakerNote and a 35 KB XMP packet. The limits leave margins of 25x
+// (fields per list), 2000x (field bytes), 18x (MakerNote) and 120x (XMP).
+
+/// Most fields carried per list of [`CarriedMetadata`] (`ifd0`, `exif`, `interop`, `gps`).
+pub const MAX_CARRIED_FIELDS: usize = 1024;
+/// Most value bytes carried by the fields of `ifd0`, `exif`, `interop` and `gps` together.
+pub const MAX_CARRIED_FIELD_BYTES: usize = 1 << 20;
+/// Largest MakerNote carried, in bytes.
+pub const MAX_CARRIED_MAKER_NOTE: usize = 4 << 20;
+/// Largest carried XMP packet, in bytes ([`Options::extra_xmp`](crate::Options::extra_xmp)
+/// is written as given).
+pub const MAX_CARRIED_XMP: usize = 4 << 20;
+
+/// The fields of one list to carry, in order: the first of each tag, at most
+/// [`MAX_CARRIED_FIELDS`], each only while its value (`key` gives tag and byte length) fits
+/// in what is left of `budget`, which it then uses up.
+pub(crate) fn within_limits<T>(
+    fields: impl IntoIterator<Item = T>,
+    budget: &mut usize,
+    key: impl Fn(&T) -> (u16, usize),
+) -> Vec<T> {
+    let mut seen = HashSet::new();
+    let mut kept = Vec::new();
+    for f in fields {
+        if kept.len() == MAX_CARRIED_FIELDS {
+            break;
+        }
+        let (tag, len) = key(&f);
+        // A later duplicate never replaces a dropped first one.
+        if !seen.insert(tag) || len > *budget {
+            continue;
+        }
+        *budget -= len;
+        kept.push(f);
+    }
+    kept
+}
+
 impl CarriedMetadata {
     /// Collects the metadata of a NEF: IFD0 descriptive tags, the EXIF IFD (with its
     /// Interoperability IFD), the GPS IFD, the XMP packet, the MakerNote and, for frames not
     /// shot in HLG tone mode, the smallest embedded JPEG preview with a long side of at least
     /// 1024 pixels (the camera's mid-size preview, which keeps DNGs near Adobe's size). HLG frames only carry HEVC previews (which DNG cannot hold) and a tiny
     /// JPEG thumbnail, so their preview is rendered from the raw data instead.
+    ///
+    /// Values past the [size limits](CarriedMetadata#size-limits) are dropped before they
+    /// are copied.
     ///
     /// # Errors
     ///
@@ -125,28 +189,31 @@ impl CarriedMetadata {
         let meta = container::parse_metadata(nef)?;
         let t = Tiff::parse(nef, 0)?;
         let ifd0 = t.ifd(t.first_ifd)?;
-        let descriptive = copy_fields(&t, &ifd0)
-            .into_iter()
-            .filter(|f| matches!(f.tag, 0x0132 | 0x013B | 0x8298) && f.typ == 2)
-            .filter(|f| f.bytes.iter().any(|&b| b != 0 && b != b' '))
-            .collect();
+        let mut budget = MAX_CARRIED_FIELD_BYTES;
+        let descriptive = copy_fields(&t, &ifd0, &mut budget, |e| {
+            matches!(e.tag, 0x0132 | 0x013B | 0x8298)
+                && e.typ == 2
+                && t.bytes(e).iter().any(|&b| b != 0 && b != b' ')
+        });
         let (mut exif, mut interop) = (Vec::new(), Vec::new());
         if let Some(off) = meta.exif_ifd {
             let ifd = t.ifd(off)?;
-            exif = copy_fields(&t, &ifd);
-            exif.retain(|f| f.tag != 0x927C);
+            exif = copy_fields(&t, &ifd, &mut budget, |e| e.tag != 0x927C);
             if let Some(off) = tiff::first_uint(&t, &ifd, 0xA005)? {
-                interop = copy_fields(&t, &t.ifd(off as u32)?);
+                interop = copy_fields(&t, &t.ifd(off as u32)?, &mut budget, |_| true);
             }
         }
         let gps = match meta.gps_ifd {
-            Some(off) => copy_fields(&t, &t.ifd(off)?),
+            Some(off) => copy_fields(&t, &t.ifd(off)?, &mut budget, |_| true),
             None => Vec::new(),
         };
-        let maker_note = meta.maker_note.map(|r| CarriedMakerNote {
-            original_offset: u32::try_from(r.start).unwrap_or(u32::MAX),
-            bytes: nef[r].to_vec(),
-        });
+        let maker_note = meta
+            .maker_note
+            .filter(|r| r.len() <= MAX_CARRIED_MAKER_NOTE)
+            .map(|r| CarriedMakerNote {
+                original_offset: u32::try_from(r.start).unwrap_or(u32::MAX),
+                bytes: nef[r].to_vec(),
+            });
         let preview = if c.maker_note.is_hlg() {
             None
         } else {
@@ -171,17 +238,30 @@ impl CarriedMetadata {
             interop,
             gps,
             maker_note,
-            xmp: meta.xmp.map(|r| nef[r].to_vec()),
+            xmp: meta
+                .xmp
+                .filter(|r| r.len() <= MAX_CARRIED_XMP)
+                .map(|r| nef[r].to_vec()),
             preview,
         })
     }
 }
 
-/// Every field of `ifd` with a classic TIFF type (1..=12) that is not an offset pointer.
-fn copy_fields(t: &Tiff<'_>, ifd: &Ifd) -> Vec<RawField> {
-    ifd.entries
+/// The fields of `ifd` with a classic TIFF type (1..=12) that are not offset pointers and
+/// that `keep` accepts, [within the limits](within_limits) of `budget`. Only kept values are
+/// copied.
+fn copy_fields(
+    t: &Tiff<'_>,
+    ifd: &Ifd,
+    budget: &mut usize,
+    keep: impl Fn(&Entry) -> bool,
+) -> Vec<RawField> {
+    let candidates = ifd
+        .entries
         .iter()
-        .filter(|e| (1..=12).contains(&e.typ) && !POINTER_TAGS.contains(&e.tag))
+        .filter(|e| (1..=12).contains(&e.typ) && !POINTER_TAGS.contains(&e.tag) && keep(e));
+    within_limits(candidates, budget, |e| (e.tag, t.bytes(e).len()))
+        .into_iter()
         .map(|e| RawField {
             tag: e.tag,
             typ: e.typ,
@@ -263,6 +343,26 @@ mod tests {
         assert_eq!(jpeg_info(&j[..10]), None);
         assert_eq!(jpeg_info(b"\xFF\xD8\xFF\xD9"), None);
         assert_eq!(jpeg_info(b"nope"), None);
+    }
+
+    #[test]
+    fn limits_keep_first_tags_within_budget() {
+        let key = |&(tag, len): &(u16, usize)| (tag, len);
+        let mut budget = 10;
+        // Duplicate tags lose to the first one, even when the first is too large.
+        let kept = within_limits(
+            [(1, 4), (2, 20), (1, 1), (2, 1), (3, 6), (4, 1)],
+            &mut budget,
+            key,
+        );
+        assert_eq!(kept, vec![(1, 4), (3, 6)]);
+        assert_eq!(budget, 0);
+        let mut budget = usize::MAX;
+        let many = (0..5000u16).map(|t| (t, 0));
+        assert_eq!(
+            within_limits(many, &mut budget, key).len(),
+            MAX_CARRIED_FIELDS
+        );
     }
 
     #[test]

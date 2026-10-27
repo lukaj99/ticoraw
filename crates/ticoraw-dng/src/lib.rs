@@ -19,6 +19,9 @@
 //!   so for them (and whenever no usable JPEG is embedded) a half-size preview is rendered
 //!   from the raw data by 2x2 binning.
 //!
+//! Carried metadata is bounded (see the size limits of [`CarriedMetadata`]), so a modified
+//! NEF cannot make the DNG, or the memory used to write it, much larger than a normal one.
+//!
 //! The crate does no I/O: bytes in, bytes out.
 //!
 //! ```no_run
@@ -57,10 +60,11 @@ use ticoraw::tiff::ByteOrder;
 use ticoraw::{DecodedRaw, TicoError};
 
 pub use metadata::{
-    CarriedMakerNote, CarriedMetadata, CarriedPreview, PreviewColorSpace, RawField,
+    CarriedMakerNote, CarriedMetadata, CarriedPreview, MAX_CARRIED_FIELD_BYTES, MAX_CARRIED_FIELDS,
+    MAX_CARRIED_MAKER_NOTE, MAX_CARRIED_XMP, PreviewColorSpace, RawField,
 };
 
-use metadata::jpeg_info;
+use metadata::{jpeg_info, within_limits};
 use render::Rgb8;
 use tiff_out::{Ifd, Tiff, Value};
 
@@ -181,7 +185,8 @@ pub fn convert(nef: &[u8], opts: &Options) -> Result<Vec<u8>, Error> {
 ///
 /// Fields of `carried` are copied verbatim, except where this function writes the same tag
 /// itself (dimensions, offsets, CFA, levels, colour, crop, orientation, IFD pointers, ...):
-/// its own value always wins.
+/// its own value always wins. Fields, MakerNote and XMP past the
+/// [size limits](CarriedMetadata#size-limits) are left out.
 ///
 /// # Errors
 ///
@@ -222,6 +227,19 @@ pub fn write(
     let too_large = || Error::TooLarge("image too large for a classic TIFF/DNG".into());
     let width = u32::try_from(img.width).map_err(|_| too_large())?;
     let height = u32::try_from(img.height).map_err(|_| too_large())?;
+
+    let mut budget = MAX_CARRIED_FIELD_BYTES;
+    let [carried_ifd0, carried_exif, carried_interop, carried_gps] =
+        [&carried.ifd0, &carried.exif, &carried.interop, &carried.gps]
+            .map(|list| within_limits(list, &mut budget, |f| (f.tag, f.bytes.len())));
+    let maker_note = carried
+        .maker_note
+        .as_ref()
+        .filter(|mn| mn.bytes.len() <= MAX_CARRIED_MAKER_NOTE);
+    let carried_xmp = carried
+        .xmp
+        .as_ref()
+        .filter(|x| opts.carry_xmp && x.len() <= MAX_CARRIED_XMP);
 
     let order = carried.byte_order;
     let mut tiff = Tiff::new(order);
@@ -346,26 +364,21 @@ pub fn write(
     if let Some(name) = &opts.original_raw_file_name {
         ifd0.set(0xC68B, Value::Ascii(name.clone()));
     }
-    let xmp = opts
-        .extra_xmp
-        .as_ref()
-        .or(carried.xmp.as_ref().filter(|_| opts.carry_xmp));
-    if let Some(x) = xmp {
+    if let Some(x) = opts.extra_xmp.as_ref().or(carried_xmp) {
         ifd0.set(0x02BC, Value::Byte(x.clone()));
     }
-    if let Some(mn) = &carried.maker_note {
+    if let Some(mn) = maker_note {
         ifd0.set(
             0xC634,
             Value::Byte(wrap_maker_note(mn, order).ok_or_else(too_large)?),
         );
     }
-    for f in &carried.ifd0 {
+    for f in &carried_ifd0 {
         ifd0.carry(f.tag, raw_value(f));
     }
     // DNG copies of EXIF lens and body facts, like Adobe writes.
     for (exif_tag, dng_tag, typ, count) in [(0xA432, 0xC630, 5, 4), (0xA431, 0xC62F, 2, 0)] {
-        if let Some(f) = carried
-            .exif
+        if let Some(f) = carried_exif
             .iter()
             .find(|f| f.tag == exif_tag && f.typ == typ && (count == 0 || f.count == count))
         {
@@ -381,9 +394,9 @@ pub fn write(
         subs.push(tiff.add_ifd(preview_ifd(chunk, info, cs, &tiff)?));
     }
     ifd0.set(0x014A, Value::Ifds(subs));
-    if !carried.exif.is_empty() || !carried.interop.is_empty() {
+    if !carried_exif.is_empty() || !carried_interop.is_empty() {
         let mut exif = Ifd::default();
-        for f in &carried.exif {
+        for f in &carried_exif {
             exif.carry(f.tag, raw_value(f));
         }
         // ExifVersion is mandatory, but Nikon Z bodies omit it; a carried one comes first.
@@ -395,18 +408,18 @@ pub fn write(
                 bytes: b"0231".to_vec(),
             },
         );
-        if !carried.interop.is_empty() {
+        if !carried_interop.is_empty() {
             let mut interop = Ifd::default();
-            for f in &carried.interop {
+            for f in &carried_interop {
                 interop.carry(f.tag, raw_value(f));
             }
             exif.set(0xA005, Value::Ifds(vec![tiff.add_ifd(interop)]));
         }
         ifd0.set(0x8769, Value::Ifds(vec![tiff.add_ifd(exif)]));
     }
-    if !carried.gps.is_empty() {
+    if !carried_gps.is_empty() {
         let mut gps = Ifd::default();
-        for f in &carried.gps {
+        for f in &carried_gps {
             gps.carry(f.tag, raw_value(f));
         }
         ifd0.set(0x8825, Value::Ifds(vec![tiff.add_ifd(gps)]));
@@ -861,6 +874,53 @@ mod tests {
         });
         let dng = write(&raw, &c, &Options::default()).unwrap();
         assert_eq!(decode_dng_cfa(&dng).unwrap().image, raw.image);
+    }
+
+    #[test]
+    fn hand_built_metadata_past_the_limits_is_left_out() {
+        let raw = sample_raw(16, 16);
+        let field = |tag, len: usize| RawField {
+            tag,
+            typ: 7,
+            count: len as u32,
+            bytes: vec![0xAB; len],
+        };
+        let mut c = carried();
+        // 64 KiB fields: 16 would fill the shared budget, and the small fields of carried()
+        // already use part of it.
+        c.exif
+            .extend((0..3000).map(|k| field(0xB000 + k, 64 << 10)));
+        // A duplicate of a carried tag, then more fields than one list may carry.
+        c.gps.push(field(0x0000, 4));
+        c.gps.extend((0..3000).map(|k| field(0x1000 + k, 0)));
+        c.maker_note.as_mut().unwrap().bytes = vec![0; MAX_CARRIED_MAKER_NOTE + 1];
+        c.xmp = Some(vec![b' '; MAX_CARRIED_XMP + 1]);
+        let dng = write(&raw, &c, &Options::default()).unwrap();
+        let normal = write(&raw, &carried(), &Options::default()).unwrap();
+        assert!(dng.len() < normal.len() + MAX_CARRIED_FIELD_BYTES + 64 * MAX_CARRIED_FIELDS);
+
+        let t = Reader::parse(&dng, 0).unwrap();
+        let ifd0 = t.ifd(t.first_ifd).unwrap();
+        assert!(ifd0.get(0xC634).is_none() && ifd0.get(0x02BC).is_none());
+        let u = |ifd: &rd::Ifd, tag| rd::first_uint(&t, ifd, tag).unwrap();
+        let exif = t.ifd(u(&ifd0, 0x8769).unwrap() as u32).unwrap();
+        assert_eq!(exif.entries.iter().filter(|e| e.tag >= 0xB000).count(), 15);
+        assert_eq!(u(&exif, 0x8827), Some(400));
+        let gps = t.ifd(u(&ifd0, 0x8825).unwrap() as u32).unwrap();
+        assert_eq!(gps.entries.len(), MAX_CARRIED_FIELDS);
+        assert_eq!(t.bytes(gps.get(0).unwrap()), &[2, 3, 0, 0]);
+        assert_eq!(decode_dng_cfa(&dng).unwrap().image, raw.image);
+
+        // At the limits, the MakerNote and XMP are still carried.
+        let mut c = carried();
+        c.maker_note.as_mut().unwrap().bytes = vec![0; MAX_CARRIED_MAKER_NOTE];
+        c.xmp = Some(vec![b' '; MAX_CARRIED_XMP]);
+        let dng = write(&raw, &c, &Options::default()).unwrap();
+        let t = Reader::parse(&dng, 0).unwrap();
+        let ifd0 = t.ifd(t.first_ifd).unwrap();
+        assert_eq!(t.bytes(ifd0.get(0x02BC).unwrap()).len(), MAX_CARRIED_XMP);
+        let private = t.bytes(ifd0.get(0xC634).unwrap());
+        assert_eq!(private.len(), 20 + MAX_CARRIED_MAKER_NOTE);
     }
 
     #[test]

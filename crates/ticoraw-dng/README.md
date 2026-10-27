@@ -31,6 +31,16 @@ source byte order, original offset, then the MakerNote unchanged), so ExifTool a
 software still read the Nikon fields. The DNG is written in the NEF's byte order, so
 verbatim fields stay valid.
 
+Carried metadata is bounded, so a modified NEF whose entries all share one large value
+cannot make the DNG, or the memory used to write it, much larger than a normal one. Per
+IFD, only the first field of each tag is carried, and at most `MAX_CARRIED_FIELDS` (1024)
+of them. The IFD0, EXIF, Interoperability and GPS fields share a budget of
+`MAX_CARRIED_FIELD_BYTES` (1 MiB) of values. The MakerNote and the XMP packet are each
+carried up to 4 MiB (`MAX_CARRIED_MAKER_NOTE`, `MAX_CARRIED_XMP`). Anything past a limit is
+left out, and the image still converts. No real file comes close: across 1638 Nikon NEFs the
+largest were 40 EXIF fields, 513 bytes of field values, a 231 KB MakerNote and a 35 KB XMP
+packet. `write()` applies the same limits to hand-built `CarriedMetadata`.
+
 ### Previews
 
 - **SDR frames** embed JPEG previews of several sizes. The smallest one with a long side

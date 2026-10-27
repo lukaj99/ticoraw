@@ -300,6 +300,101 @@ fn xmp_options() {
     assert_eq!(xmp(&sidecar), Some(b"<sidecar/>".to_vec()));
 }
 
+/// Appends a copy of the IFD that IFD0's `pointer` tag points at (IFD0 itself for `None`)
+/// with `extra` (tag, type, count, value offset) entries after the original ones, and points
+/// the file at the copy: how a modified camera file makes many entries share one value.
+fn with_extra_entries(nef: &[u8], pointer: Option<u16>, extra: &[(u16, u16, u32, u32)]) -> Vec<u8> {
+    let t = Tiff::parse(nef, 0).unwrap();
+    let ifd0 = t.ifd(t.first_ifd).unwrap();
+    let (at, slot) = match pointer {
+        None => (t.first_ifd as usize, 4),
+        Some(tag) => {
+            let e = ifd0.get(tag).unwrap();
+            (
+                rd::first_uint(&t, &ifd0, tag).unwrap().unwrap() as usize,
+                e.pos,
+            )
+        }
+    };
+    let n = usize::from(t.u16_at(at).unwrap());
+    let big = t.order == ByteOrder::Big;
+    let u16b = |v: u16| {
+        if big {
+            v.to_be_bytes()
+        } else {
+            v.to_le_bytes()
+        }
+    };
+    let u32b = |v: u32| {
+        if big {
+            v.to_be_bytes()
+        } else {
+            v.to_le_bytes()
+        }
+    };
+    let mut out = nef.to_vec();
+    out.resize(out.len().next_multiple_of(2), 0);
+    let new_at = out.len() as u32;
+    out.extend_from_slice(&u16b((n + extra.len()) as u16));
+    out.extend_from_slice(&nef[at + 2..at + 2 + 12 * n]);
+    for &(tag, typ, count, offset) in extra {
+        out.extend_from_slice(&u16b(tag));
+        out.extend_from_slice(&u16b(typ));
+        out.extend_from_slice(&u32b(count));
+        out.extend_from_slice(&u32b(offset));
+    }
+    out.extend_from_slice(&[0; 4]);
+    out[slot..slot + 4].copy_from_slice(&u32b(new_at));
+    out
+}
+
+#[test]
+fn shared_metadata_values_are_not_amplified() {
+    let cs = codestream();
+    for order in [Order::Little, Order::Big] {
+        let nef = build_nef(Spec { order, ..SDR }, &cs);
+        let normal = ticoraw_dng::convert(&nef, &Options::default()).unwrap();
+        let len = nef.len() as u32;
+        // 3000 EXIF entries, all pointing at the whole file, after a duplicate ISO.
+        let mut extra = vec![(0x8827, 3, 1, 0)];
+        extra.extend((0..3000).map(|k| (0xB000 + k, 7, len, 0)));
+        let nef = with_extra_entries(&nef, Some(0x8769), &extra);
+        let gps: Vec<_> = (0..3000).map(|k| (0x1000 + k, 7, len, 0)).collect();
+        let nef = with_extra_entries(&nef, Some(0x8825), &gps);
+        // IFD0: copies of a descriptive tag (only the first is carried) and other tags.
+        let ifd0: Vec<_> = (0..3000)
+            .map(|k| (if k % 2 == 0 { 0x0132 } else { 0xB000 + k }, 2, len, 0))
+            .collect();
+        let nef = with_extra_entries(&nef, None, &ifd0);
+
+        let carried = CarriedMetadata::from_nef(&nef).unwrap();
+        let lists = [&carried.ifd0, &carried.exif, &carried.interop, &carried.gps];
+        let bytes: usize = lists
+            .iter()
+            .flat_map(|l| l.iter())
+            .map(|f| f.bytes.len())
+            .sum();
+        assert!(bytes <= ticoraw_dng::MAX_CARRIED_FIELD_BYTES, "{bytes}");
+        assert!(
+            lists
+                .iter()
+                .all(|l| l.len() <= ticoraw_dng::MAX_CARRIED_FIELDS)
+        );
+        assert_eq!(carried.ifd0.len(), 1);
+        assert_eq!(carried.ifd0[0].bytes, b"2025:03:16 15:25:19\0");
+        let iso: Vec<_> = carried.exif.iter().filter(|f| f.tag == 0x8827).collect();
+        assert_eq!(iso.len(), 1);
+        assert_eq!(iso[0].count, 1);
+        assert!(carried.maker_note.is_some() && carried.xmp.is_some());
+
+        let dng = ticoraw_dng::convert(&nef, &Options::default()).unwrap();
+        let bound = normal.len() + ticoraw_dng::MAX_CARRIED_FIELD_BYTES + 64 * 1024;
+        assert!(dng.len() < bound, "{} bytes", dng.len());
+        let raw = ticoraw::decode_nef(&nef).unwrap();
+        assert_eq!(ticoraw::dng::decode_dng_cfa(&dng).unwrap().image, raw.image);
+    }
+}
+
 #[test]
 fn non_he_files_are_errors() {
     assert!(ticoraw_dng::convert(b"", &Options::default()).is_err());
