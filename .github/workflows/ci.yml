@@ -71,6 +71,19 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p ticoraw --no-default-features --target wasm32-unknown-unknown
+      - run: cargo build -p ticoraw-dng --no-default-features --target wasm32-unknown-unknown
+
+  fuzz-check:
+    name: fuzz targets compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      # Stable `check` is enough to catch API drift; the nightly fuzz workflow runs them.
+      - run: cargo check --manifest-path fuzz/Cargo.toml --all-targets
 
   doc:
     name: rustdoc

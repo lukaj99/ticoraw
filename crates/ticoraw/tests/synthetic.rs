@@ -1072,3 +1072,38 @@ fn oversized_frame_is_rejected_before_allocating() {
         Err(TicoError::Header(_))
     ));
 }
+
+#[test]
+fn fuzz_regressions_never_panic() {
+    // Every minimised crash the fuzzers ever found lives under fuzz/artifacts-regressions/
+    // <target>/; replay each through every public entry point.
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fuzz/artifacts-regressions");
+    let Ok(targets) = std::fs::read_dir(&root) else {
+        return; // not present in a packaged crate
+    };
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for dir in targets.filter_map(Result::ok) {
+        for f in std::fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+        {
+            if f.path().is_file() {
+                files.push((
+                    f.path().display().to_string(),
+                    std::fs::read(f.path()).unwrap(),
+                ));
+            }
+        }
+    }
+    let inputs: Vec<(&str, &[u8])> = files.iter().map(|(n, b)| (n.as_str(), &b[..])).collect();
+    let all = |b: &[u8]| {
+        let _ = ticoraw::decode_nef(b);
+        let _ = ticoraw::inspect_nef(b);
+        let _ = ticoraw::decode_ticoraw(b);
+        let _ = ticoraw::dng::decode_dng_cfa(b);
+        let _ = ticoraw::dng::decode_lossless_jpeg(b);
+    };
+    assert_no_panic(&all, &inputs);
+}

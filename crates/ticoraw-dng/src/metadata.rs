@@ -112,8 +112,8 @@ const POINTER_TAGS: [u16; 6] = [0x0111, 0x014A, 0x0201, 0x8769, 0x8825, 0xA005];
 impl CarriedMetadata {
     /// Collects the metadata of a NEF: IFD0 descriptive tags, the EXIF IFD (with its
     /// Interoperability IFD), the GPS IFD, the XMP packet, the MakerNote and, for frames not
-    /// shot in HLG tone mode, the largest embedded JPEG preview with a long side of at least
-    /// 1024 pixels. HLG frames only carry HEVC previews (which DNG cannot hold) and a tiny
+    /// shot in HLG tone mode, the smallest embedded JPEG preview with a long side of at least
+    /// 1024 pixels (the camera's mid-size preview, which keeps DNGs near Adobe's size). HLG frames only carry HEVC previews (which DNG cannot hold) and a tiny
     /// JPEG thumbnail, so their preview is rendered from the raw data instead.
     ///
     /// # Errors
@@ -154,7 +154,7 @@ impl CarriedMetadata {
                 .iter()
                 .filter_map(|r| jpeg_info(&nef[r.clone()]).map(|i| (r, i)))
                 .filter(|(_, i)| i.width.max(i.height) >= MIN_CARRIED_PREVIEW)
-                .max_by_key(|(_, i)| i.width * i.height)
+                .min_by_key(|(_, i)| i.width * i.height)
                 .map(|(r, _)| CarriedPreview {
                     jpeg: nef[r.clone()].to_vec(),
                     color_space: if c.maker_note.color_space == Some(2) {

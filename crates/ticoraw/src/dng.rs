@@ -163,7 +163,7 @@ fn decode_ljpeg_layout(t: &Tiff<'_>, ifd: &Ifd, width: usize, height: usize) -> 
         return Err(TicoError::Container("zero tile or strip size".into()));
     }
     // Lossless JPEG spends at least one bit per sample.
-    let total: u64 = counts.iter().sum();
+    let total = counts.iter().fold(0u64, |a, &c| a.saturating_add(c));
     if (width as u64).saturating_mul(height as u64) > total.saturating_mul(8) {
         return Err(TicoError::Truncated {
             what: "DNG tiles",
