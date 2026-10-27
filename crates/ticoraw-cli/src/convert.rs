@@ -47,8 +47,8 @@ Options:
   --with-sidecar      Use the sidecar <name>.xmp (any case) next to each NEF, as written by
                       Lightroom, Bridge or Capture One, as the DNG's XMP instead of the
                       NEF's own packet
-  -j, --jobs <n>      Files converted at once [default: the number of cores, at most one
-                      per 2 GB of memory]
+  -j, --jobs <n>      Files converted at once [default: up to 4, at most one per 2 GB of
+                      memory; each file already uses every core]
   --json              Print JSON Lines (one event per file, then a summary) instead of text
   -h, --help          Show this help
 
@@ -381,9 +381,17 @@ fn read_sidecar(path: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// The default `--jobs`: one per core, at most one per [`MEMORY_PER_JOB`] of memory.
+/// The default `--jobs`: up to [`MAX_DEFAULT_JOBS`] (and the core count), at most one per
+/// [`MEMORY_PER_JOB`] of memory.
+/// Most files converted at once by default. Decoding and tile encoding already use every
+/// core inside each file, so beyond a few files in flight extra jobs mostly add memory
+/// (measured: 3-6 jobs give nearly all the throughput of one per core).
+const MAX_DEFAULT_JOBS: usize = 4;
+
 fn default_jobs() -> usize {
-    let cores = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let cores = std::thread::available_parallelism()
+        .map_or(1, NonZeroUsize::get)
+        .min(MAX_DEFAULT_JOBS);
     let by_memory = physical_memory().map_or(usize::MAX, |m| {
         usize::try_from(m / MEMORY_PER_JOB).unwrap_or(usize::MAX)
     });

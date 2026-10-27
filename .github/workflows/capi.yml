@@ -67,8 +67,10 @@ jobs:
           # clang ships with the Windows runner; Linux and macOS use the default cc.
           CC: ${{ runner.os == 'Windows' && 'clang' || 'cc' }}
         run: crates/ticoraw-capi/scripts/c-test.sh
-      # Workflow artifact only (7 days), never a release asset; see the patent gate above.
+      # Compiled libraries are uploaded only when binary distribution is allowed (see the
+      # patent gate above); any signed-in user can download public workflow artifacts.
       - uses: actions/upload-artifact@v4
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         with:
           name: ticoraw-capi-${{ runner.os }}
           retention-days: 7

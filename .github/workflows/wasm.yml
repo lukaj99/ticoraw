@@ -100,8 +100,10 @@ jobs:
         working-directory: ${{ runner.temp }}/pkg
         run: npm pack --dry-run
 
-      # A workflow artifact for review and testing, not a release.
+      # Uploaded (for the gated publish job) only when binary distribution is allowed;
+      # any signed-in user can download public workflow artifacts.
       - uses: actions/upload-artifact@v4
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         with:
           name: ticoraw-npm-package
           path: ${{ runner.temp }}/pkg

@@ -72,6 +72,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p ticoraw --no-default-features --target wasm32-unknown-unknown
       - run: cargo build -p ticoraw-dng --no-default-features --target wasm32-unknown-unknown
+      - run: cargo build -p ticoraw-wasm --target wasm32-unknown-unknown
 
   fuzz-check:
     name: fuzz targets compile
