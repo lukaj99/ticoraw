@@ -19,12 +19,14 @@ import { Worker as NodeWorker, isMainThread, parentPort, workerData } from "node
 class ShimWorker {
   #w;
   onmessage = null;
+  onmessageerror = null;
   onerror = null;
 
   constructor(url, options) {
     assert.equal(options?.type, "module");
     this.#w = new NodeWorker(new URL(import.meta.url), { workerData: { url: String(url) } });
     this.#w.on("message", (data) => this.onmessage?.({ data }));
+    this.#w.on("messageerror", (data) => this.onmessageerror?.({ data }));
     this.#w.on("error", (e) => this.onerror?.({ message: e.message, preventDefault() {} }));
   }
 
@@ -96,7 +98,34 @@ async function main() {
   } finally {
     pool.terminate();
   }
+
+  // Options that cannot be structured-cloned reject with a TypeError, as the synchronous
+  // toDng throws one, and free the worker: with one worker, the next job still runs.
+  const single = new TicorawWorker({ size: 1 });
+  try {
+    for (const bad of [{ originalRawFileName: () => "a.NEF" }, { x: Symbol("x") }, () => {}]) {
+      assert.throws(() => direct.toDng(nef, bad), TypeError);
+      await assert.rejects(within(single.toDng(nef, bad)), TypeError);
+    }
+    assert.equal((await within(single.inspect(nef))).codec, "ticoraw");
+    // A Proxy (a Vue reactive object, say) is read like a plain object, as toDng reads it.
+    const opts = { compression: "uncompressed", preview: "none" };
+    const proxy = new Proxy({ ...opts }, {});
+    assert.throws(() => structuredClone(proxy));
+    assert.deepEqual(await within(single.toDng(nef, proxy)), direct.toDng(nef, opts));
+  } finally {
+    single.terminate();
+  }
   console.log("worker-test: ok");
+}
+
+/** Fails instead of hanging when a job never settles. */
+function within(promise, ms = 30_000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`worker-test: no answer in ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 // Last, so that the class above is initialised before main() uses it.
@@ -110,6 +139,7 @@ if (!isMainThread) {
   globalThis.postMessage = (msg, transfer) => parentPort.postMessage(msg, transfer);
   globalThis.close = () => process.exit(0);
   parentPort.on("message", (data) => globalThis.onmessage?.({ data }));
+  parentPort.on("messageerror", (data) => globalThis.onmessageerror?.({ data }));
   const webFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const u = new URL(url);

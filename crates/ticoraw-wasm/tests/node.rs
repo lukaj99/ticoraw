@@ -14,7 +14,7 @@ mod common;
 
 use common::encoder::{self, Options as CsOptions};
 use common::tiff::{NefSpec, build_nef};
-use js_sys::{Object, Reflect, Uint8Array, Uint16Array};
+use js_sys::{ArrayBuffer, DataView, Object, Reflect, Uint8Array, Uint16Array};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -24,6 +24,11 @@ const H: usize = 48;
 fn nef() -> Vec<u8> {
     let cs = encoder::encode_random(&CsOptions::new(W, H, 2), 7).codestream;
     build_nef(&NefSpec::new(W, H), &cs)
+}
+
+/// Bytes as JS passes them: a `Uint8Array` copy.
+fn bytes(b: &[u8]) -> JsValue {
+    Uint8Array::from(b).into()
 }
 
 fn get(v: &JsValue, key: &str) -> JsValue {
@@ -76,7 +81,7 @@ fn version_is_the_crate_version() {
 #[wasm_bindgen_test]
 fn inspect_reports_container_and_codestream() {
     let nef = nef();
-    let i = ticoraw_wasm::inspect(&nef).unwrap();
+    let i = ticoraw_wasm::inspect(&bytes(&nef)).unwrap();
     assert_eq!(string(&i, "model"), "NIKON Z6_3");
     assert_eq!(string(&i, "codec"), "ticoraw");
     assert_eq!(num(&i, "width"), W as f64);
@@ -89,11 +94,11 @@ fn inspect_reports_container_and_codestream() {
     assert!(get(&cs, "unsupported").is_null());
 
     // A prefix that holds every structure gives the same answer.
-    let p = ticoraw_wasm::inspect_prefix(&nef, nef.len() as f64).unwrap();
+    let p = ticoraw_wasm::inspect_prefix(&bytes(&nef), nef.len() as f64).unwrap();
     assert_eq!(js_sys::JSON::stringify(&p), js_sys::JSON::stringify(&i));
-    let e = ticoraw_wasm::inspect_prefix(&nef, -1.0).unwrap_err();
+    let e = ticoraw_wasm::inspect_prefix(&bytes(&nef), -1.0).unwrap_err();
     assert!(is_type_error(&e));
-    let e = ticoraw_wasm::inspect_prefix(&nef[..16], nef.len() as f64).unwrap_err();
+    let e = ticoraw_wasm::inspect_prefix(&bytes(&nef[..16]), nef.len() as f64).unwrap_err();
     assert_eq!(tico_kind(&e), "Truncated");
 }
 
@@ -101,7 +106,7 @@ fn inspect_reports_container_and_codestream() {
 fn decode_matches_the_rust_api() {
     let nef = nef();
     let want = ticoraw::decode_nef(&nef).unwrap();
-    let d = ticoraw_wasm::decode(&nef).unwrap();
+    let d = ticoraw_wasm::decode(&bytes(&nef)).unwrap();
     assert_eq!(num(&d, "width"), W as f64);
     assert_eq!(num(&d, "height"), H as f64);
     let px = get(&d, "pixels").dyn_into::<Uint16Array>().unwrap();
@@ -146,8 +151,8 @@ fn to_dng_round_trips_with_every_compression() {
             ("preview", JsValue::NULL),
         ])),
     ] {
-        let dng = ticoraw_wasm::to_dng(&nef, opts).unwrap();
-        let back = ticoraw_wasm::decode_dng(&dng).unwrap();
+        let dng = ticoraw_wasm::to_dng(&bytes(&nef), opts).unwrap();
+        let back = ticoraw_wasm::decode_dng(&bytes(&dng)).unwrap();
         let px = get(&back, "pixels").dyn_into::<Uint16Array>().unwrap();
         assert_eq!(px.to_vec(), want);
         assert_eq!(string(&back, "cfaPattern"), "RGGB");
@@ -166,6 +171,107 @@ fn to_dng_round_trips_with_every_compression() {
 }
 
 #[wasm_bindgen_test]
+fn every_buffer_type_is_read_and_anything_else_is_a_type_error() {
+    // wasm-bindgen's `&[u8]` glue would read an `ArrayBuffer` as zero bytes; the bindings
+    // read the bytes of any `ArrayBuffer`, typed array or `DataView` instead.
+    let nef = nef();
+    let want = js_sys::JSON::stringify(&ticoraw_wasm::inspect(&bytes(&nef)).unwrap()).unwrap();
+    // The NEF two bytes into a larger buffer, so that the views have an offset.
+    let padded = Uint8Array::new_with_length(nef.len() as u32 + 4);
+    padded.subarray(2, nef.len() as u32 + 2).copy_from(&nef);
+    let buffer = padded.buffer();
+    let len = nef.len() as u32;
+    let inputs: [JsValue; 4] = [
+        padded.subarray(2, len + 2).into(),
+        buffer.slice_with_end(2, len + 2).into(),
+        DataView::new(&buffer, 2, nef.len()).into(),
+        // A view whose element size is not 1 (the NEF length here is even).
+        js_sys::Int16Array::new_with_byte_offset_and_length(&buffer, 2, len / 2).into(),
+    ];
+    assert_eq!(nef.len() % 2, 0);
+    for input in &inputs {
+        let i = ticoraw_wasm::inspect(input).unwrap();
+        assert_eq!(js_sys::JSON::stringify(&i).unwrap(), want);
+        let p = ticoraw_wasm::inspect_prefix(input, nef.len() as f64).unwrap();
+        assert_eq!(js_sys::JSON::stringify(&p).unwrap(), want);
+        let d = ticoraw_wasm::decode(input).unwrap();
+        assert_eq!(num(&d, "width"), W as f64);
+        let dng = ticoraw_wasm::to_dng(input, None).unwrap();
+        let dng: ArrayBuffer = Uint8Array::from(&dng[..]).buffer();
+        assert_eq!(
+            num(&ticoraw_wasm::decode_dng(&dng).unwrap(), "width"),
+            W as f64
+        );
+    }
+
+    let not_bytes: [JsValue; 6] = [
+        JsValue::from(42),
+        "NEF".into(),
+        JsValue::NULL,
+        JsValue::UNDEFINED,
+        js_sys::Array::of1(&1.into()).into(),
+        Object::new().into(),
+    ];
+    for v in &not_bytes {
+        let e = ticoraw_wasm::inspect(v).unwrap_err();
+        assert!(is_type_error(&e), "{v:?}: {e:?}");
+        assert!(ticoraw_wasm::decode(v).is_err_and(|e| is_type_error(&e)));
+        assert!(ticoraw_wasm::to_dng(v, None).is_err_and(|e| is_type_error(&e)));
+        assert!(ticoraw_wasm::decode_dng(v).is_err_and(|e| is_type_error(&e)));
+        let e = ticoraw_wasm::inspect_prefix(v, 10.0).unwrap_err();
+        assert!(is_type_error(&e), "{v:?}: {e:?}");
+    }
+    let e = ticoraw_wasm::inspect(&JsValue::from(42)).unwrap_err();
+    assert_eq!(
+        string(&e, "message"),
+        "inspect: bytes must be a Uint8Array, an ArrayBuffer or another typed array or \
+         DataView, not a number"
+    );
+}
+
+/// The `XMLPacket` (0x02BC) entry of a DNG's IFD0: (type, count).
+fn xmp_entry(dng: &[u8]) -> Option<(u16, u32)> {
+    let le = &dng[..2] == b"II";
+    let u16_at = |o: usize| {
+        let b = [dng[o], dng[o + 1]];
+        if le {
+            u16::from_le_bytes(b)
+        } else {
+            u16::from_be_bytes(b)
+        }
+    };
+    let u32_at = |o: usize| {
+        let b = dng[o..o + 4].try_into().unwrap();
+        if le {
+            u32::from_le_bytes(b)
+        } else {
+            u32::from_be_bytes(b)
+        }
+    };
+    let ifd = u32_at(4) as usize;
+    (0..usize::from(u16_at(ifd)))
+        .map(|i| ifd + 2 + i * 12)
+        .find(|&e| u16_at(e) == 0x02BC)
+        .map(|e| (u16_at(e + 2), u32_at(e + 4)))
+}
+
+#[wasm_bindgen_test]
+fn empty_extra_xmp_is_no_packet() {
+    // As in the C API, an empty `extraXmp` means none: the DNG is the default conversion
+    // (which keeps the NEF's own XMP), not one with a zero-length XMLPacket entry.
+    let nef = bytes(&nef());
+    let default = ticoraw_wasm::to_dng(&nef, None).unwrap();
+    let packet = options(&[("extraXmp", "<x:xmpmeta/>".into())]);
+    let with = ticoraw_wasm::to_dng(&nef, Some(packet)).unwrap();
+    assert_eq!(xmp_entry(&with), Some((1, 12)));
+    for empty in [JsValue::from(""), Uint8Array::new_with_length(0).into()] {
+        let dng = ticoraw_wasm::to_dng(&nef, Some(options(&[("extraXmp", empty)]))).unwrap();
+        assert_eq!(xmp_entry(&dng), xmp_entry(&default));
+        assert_eq!(dng, default);
+    }
+}
+
+#[wasm_bindgen_test]
 fn malformed_options_throw_type_errors() {
     let nef = nef();
     for o in [
@@ -175,27 +281,27 @@ fn malformed_options_throw_type_errors() {
         options(&[("extraXmp", 3.into())]),
         js_sys::Array::new().unchecked_into(),
     ] {
-        let e = ticoraw_wasm::to_dng(&nef, Some(o)).unwrap_err();
+        let e = ticoraw_wasm::to_dng(&bytes(&nef), Some(o)).unwrap_err();
         assert!(is_type_error(&e), "{e:?}");
     }
 }
 
 #[wasm_bindgen_test]
 fn failures_are_tico_errors_with_the_rust_kind_and_message() {
-    let e = ticoraw_wasm::decode(b"not a raw file").unwrap_err();
+    let e = ticoraw_wasm::decode(&bytes(b"not a raw file")).unwrap_err();
     let want = ticoraw::decode_nef(b"not a raw file").unwrap_err();
     assert_eq!(tico_kind(&e), "Container");
     assert_eq!(string(&e, "message"), want.to_string());
 
     let nef = nef();
     let cut = &nef[..nef.len() / 2];
-    let e = ticoraw_wasm::to_dng(cut, None).unwrap_err();
+    let e = ticoraw_wasm::to_dng(&bytes(cut), None).unwrap_err();
     assert_eq!(tico_kind(&e), "Truncated");
     assert!(get(&e, "what").is_string());
     assert!(num(&e, "offset") >= 0.0);
 
     // A NEF's raw IFD is a CFA image, but not one a DNG reader decodes.
-    let e = ticoraw_wasm::decode_dng(&nef).unwrap_err();
+    let e = ticoraw_wasm::decode_dng(&bytes(&nef)).unwrap_err();
     assert_eq!(tico_kind(&e), "Unsupported");
 }
 
@@ -205,12 +311,13 @@ fn hostile_input_never_traps() {
     let nef = nef();
     let mut rng = common::Rng::new(3);
     for cut in (0..nef.len()).step_by(97) {
-        assert!(ticoraw_wasm::decode(&nef[..cut]).is_err());
+        assert!(ticoraw_wasm::decode(&bytes(&nef[..cut])).is_err());
     }
     for _ in 0..200 {
         let mut m = nef.clone();
         let at = rng.below(m.len() as u64) as usize;
         m[at] ^= rng.byte() | 1;
+        let m = bytes(&m);
         let _ = ticoraw_wasm::inspect(&m);
         let _ = ticoraw_wasm::to_dng(&m, None);
     }

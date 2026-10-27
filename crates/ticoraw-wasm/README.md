@@ -39,6 +39,7 @@ The package, named `ticoraw`, contains:
 | `web/` | ESM build for browsers, Web Workers, Deno and bundlers (`import "ticoraw"` outside Node) |
 | `node/` | CommonJS build for Node.js 18+ (`import "ticoraw"` or `require("ticoraw")` in Node) |
 | `worker.js`, `index.d.ts` | `ticoraw/worker`: a pool of module Web Workers |
+| `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-NOTICES.md` | licences, and the notices of every bundled crate |
 
 ## API
 
@@ -51,7 +52,9 @@ The package, named `ticoraw`, contains:
 | `decodeDng(bytes)` | the CFA mosaic of a DNG, e.g. to check a conversion |
 | `version()` | the library version |
 
-`bytes` is a `Uint8Array` (a Node `Buffer` works). Every call is synchronous and runs on
+`bytes` is a `Uint8Array` (a Node `Buffer` works), an `ArrayBuffer` such as
+`await file.arrayBuffer()`, or any other typed array or `DataView`; anything else throws a
+`TypeError`. Every call is synchronous and runs on
 the calling thread, so in a page use the worker pool below. Full types are in
 `web/ticoraw.d.ts`.
 
@@ -65,7 +68,7 @@ no crop, black subtraction or scaling. `cfaPattern` is a string such as `"RGGB"`
 | `compression` | `"lossless-jpeg"` | `"uncompressed"` writes one 16-bit strip, 2 bytes per photosite |
 | `preview` | `"auto"` | `"none"` skips the preview; the thumbnail is always written |
 | `carryXmp` | `true` | copy the NEF's XMP packet |
-| `extraXmp` | none | an XMP packet (`Uint8Array` or string) that replaces the NEF's |
+| `extraXmp` | none | an XMP packet (`Uint8Array` or string) that replaces the NEF's; empty means none |
 | `originalRawFileName` | none | written as `OriginalRawFileName`, usually the NEF's file name |
 
 ### Errors
@@ -136,7 +139,7 @@ On the main thread, without workers, initialise the module once:
 ```js
 import init, { inspect } from "ticoraw";
 await init();
-console.log(inspect(new Uint8Array(await file.arrayBuffer())).model);
+console.log(inspect(await file.arrayBuffer()).model);
 ```
 
 ## In Node.js
@@ -213,4 +216,5 @@ runs `ticoraw/worker` under Node with a small shim for the Web Worker API.
 MIT OR Apache-2.0, like the rest of ticoraw. The DNG preview encoder,
 [`jpeg-encoder`](https://crates.io/crates/jpeg-encoder), is `(MIT OR Apache-2.0) AND IJG`,
 so a distributed build must say: this software is based in part on the work of the
-Independent JPEG Group.
+Independent JPEG Group. The package carries that statement, the IJG licence and the
+licences of every bundled crate in `THIRD-PARTY-NOTICES.md`.

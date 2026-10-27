@@ -53,6 +53,12 @@ if (IN_WORKER) {
       if (trapped) globalThis.close();
     }
   };
+  // A request that could not be deserialized has no readable id; the pool sends one job at
+  // a time, so `id: null` answers the current one.
+  globalThis.onmessageerror = () => {
+    const error = { name: "Error", message: "ticoraw worker: the request could not be received" };
+    globalThis.postMessage({ id: null, ok: false, trapped: false, error });
+  };
 }
 
 function plainError(e) {
@@ -66,6 +72,24 @@ function reviveError(p) {
   const e = p.name === "TypeError" ? new TypeError(p.message) : new Error(p.message);
   Object.assign(e, p);
   return e;
+}
+
+// Options reach the worker by structured clone. A shallow copy of the own enumerable
+// properties, which are all the synchronous toDng reads, lets a Proxy (a Vue reactive object,
+// say) through as it does there; anything that is not an object goes as is, for toDng to
+// reject.
+function plainOptions(options) {
+  if (options === null || typeof options !== "object" || Array.isArray(options)) return options;
+  return { ...options };
+}
+
+// postMessage throws a DataCloneError for options it cannot clone, such as a function: a
+// bad argument, so reject with the TypeError the synchronous API throws for one.
+function cloneError(e) {
+  if (e?.name !== "DataCloneError") return e;
+  return new TypeError(`ticoraw: toDng options cannot be sent to a worker: ${e.message}`, {
+    cause: e,
+  });
 }
 
 async function ownedBuffer(input) {
@@ -134,14 +158,16 @@ export class TicorawWorker {
       slot.job = job;
       slot.id += 1;
       const id = slot.id;
-      ownedBuffer(job.input).then(
-        (bytes) => {
+      ownedBuffer(job.input)
+        .then((bytes) => {
           if (slot.job === job && slot.id === id) {
-            slot.worker.postMessage({ id, op: job.op, bytes, options: job.options }, [bytes]);
+            const options = plainOptions(job.options);
+            slot.worker.postMessage({ id, op: job.op, bytes, options }, [bytes]);
           }
-        },
-        (e) => this.#settle(slot, id, () => job.reject(e)),
-      );
+        })
+        // A rejected input, a throwing getter or options that cannot be cloned (a
+        // DataCloneError from postMessage) fail this job and free the slot.
+        .catch((e) => this.#settle(slot, id, () => job.reject(cloneError(e))));
     }
   }
 
@@ -152,8 +178,15 @@ export class TicorawWorker {
       slot.answered = true;
       const job = slot.job;
       if (data.trapped) this.#drop(slot);
-      this.#settle(slot, data.id, () =>
+      this.#settle(slot, data.id ?? slot.id, () =>
         data.ok ? job.resolve(data.result) : job.reject(reviveError(data.error)),
+      );
+    };
+    // The worker's answer could not be deserialized: the job fails, the worker stays usable.
+    worker.onmessageerror = () => {
+      const job = slot.job;
+      this.#settle(slot, slot.id, () =>
+        job.reject(new Error("ticoraw worker: the result could not be received")),
       );
     };
     worker.onerror = (ev) => {
