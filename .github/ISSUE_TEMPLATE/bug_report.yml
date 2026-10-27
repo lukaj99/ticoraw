@@ -1,0 +1,115 @@
+name: Bug report
+description: Something in ticoraw does not work, crashes or gives a wrong result.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. The details below let us reproduce it without a back-and-forth.
+
+        - **Security problem** (a crash, hang or huge memory use from a crafted file)? Please report it privately instead, as described in [SECURITY.md](https://github.com/lukaj99/ticoraw/blob/main/SECURITY.md).
+        - **Camera or mode not supported yet?** Use the *Camera support* form.
+        - **Please do not attach NEF files.** They contain your camera's serial number and sometimes your location. [docs/SAMPLES.md](https://github.com/lukaj99/ticoraw/blob/main/docs/SAMPLES.md) explains how to share a sample safely if one is needed.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem, and what you expected to happen instead.
+      placeholder: "`ticoraw decode` fails with \"...\" on every file from my camera, but I expected a DNG."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact command you ran (or the library call), and its full output, including any error message.
+      placeholder: |
+        $ ticoraw decode DSC_0001.NEF
+        error: ...
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ticoraw version
+      description: The output of `ticoraw --version`. If you use the library, the version or git commit in your Cargo.lock.
+      placeholder: ticoraw 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: inspect
+    attributes:
+      label: "Output of `ticoraw inspect --json <file>`"
+      description: |
+        For a problem with a specific file, run `ticoraw inspect --json` on it and paste the result. It contains no pixels and no serial number. **Shorten the `path` field if it shows your name.** If `inspect` itself fails, paste its error instead.
+
+        (A future `ticoraw report` command will collect all of this, privacy-safe, in one step. Until it exists, `inspect --json` is the best substitute.)
+      render: json
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+        - WebAssembly / browser
+        - Other (say below)
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating system version
+      placeholder: macOS 15.5, Windows 11 24H2, Ubuntu 24.04, ...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install ticoraw?
+      options:
+        - "cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli"
+        - "From a clone (cargo install --path crates/ticoraw-cli, or cargo run)"
+        - As a library dependency in my own project
+        - Other (say below)
+    validations:
+      required: true
+
+  - type: input
+    id: rustc
+    attributes:
+      label: Rust version
+      description: The output of `rustc --version`. Especially useful for build failures.
+      placeholder: rustc 1.85.0 (...)
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Camera body and mode, how the DNG looked in which editor, whether it used to work, and so on.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this has not been reported yet.
+          required: true
+        - label: I removed personal information (my name in file paths, serial numbers, GPS data) from everything I pasted.
+          required: true

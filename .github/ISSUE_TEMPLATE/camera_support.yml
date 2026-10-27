@@ -1,0 +1,155 @@
+name: Camera support
+description: Ask for a camera, firmware or mode to be supported, report how a body works, or offer a sample file.
+labels: ["camera-support", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping `ticoraw` cover more cameras. The bodies verified so far are listed in [docs/compat.md](https://github.com/lukaj99/ticoraw/blob/main/docs/compat.md). A report helps even if everything already works on your camera: each new body, firmware or mode we can confirm is worth knowing about.
+
+        **Please do not attach NEF files here.** If you can share a sample, follow [docs/SAMPLES.md](https://github.com/lukaj99/ticoraw/blob/main/docs/SAMPLES.md): it explains what personal data a NEF contains and how to upload one to raw.pixls.us under CC0. Then paste the link below.
+
+  - type: dropdown
+    id: body
+    attributes:
+      label: Camera body
+      options:
+        - Nikon Z 9
+        - Nikon Z 8
+        - Nikon Z f
+        - Nikon Z6III
+        - Nikon Z 5 II
+        - Nikon Z 50 II
+        - Nikon ZR
+        - Another body (name it below)
+    validations:
+      required: true
+
+  - type: input
+    id: body-other
+    attributes:
+      label: Other body
+      description: Only if you chose "Another body" above.
+      placeholder: Nikon Z ...
+    validations:
+      required: false
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: On the camera, Setup menu, "Firmware version". Copy the camera ("C") version.
+      placeholder: "C: 1.10"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Raw compression mode
+      description: The "RAW recording" setting the file was shot with.
+      options:
+        - High efficiency (HE)
+        - High efficiency* (HE*)
+        - Both (I have one file of each)
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Image area
+      multiple: true
+      options:
+        - FX (36x24)
+        - DX (24x16)
+        - "1:1"
+        - "16:9"
+        - "5:4"
+        - Other or not sure
+    validations:
+      required: false
+
+  - type: dropdown
+    id: tone
+    attributes:
+      label: Tone mode
+      options:
+        - SDR
+        - HLG
+        - Not sure
+    validations:
+      required: false
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: What happens with ticoraw?
+      options:
+        - It works, I'm reporting a body, firmware or mode not yet listed
+        - "`inspect` fails"
+        - "`decode` fails"
+        - "`decode` warns that there is no built-in colour profile"
+        - The DNG opens but looks wrong
+        - I haven't tried ticoraw yet
+        - Something else (say below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ticoraw version
+      description: The output of `ticoraw --version`, if you have it installed.
+      placeholder: ticoraw 0.1.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: inspect
+    attributes:
+      label: "Output of `ticoraw inspect --json <file>`"
+      description: It contains no pixels and no serial number. **Shorten the `path` field if it shows your name.** (A future `ticoraw report` command will produce a privacy-safe bundle for exactly this purpose.)
+      render: json
+    validations:
+      required: false
+
+  - type: dropdown
+    id: sample
+    attributes:
+      label: Can you share a sample file?
+      description: See [docs/SAMPLES.md](https://github.com/lukaj99/ticoraw/blob/main/docs/SAMPLES.md) before deciding. Saying no is completely fine.
+      options:
+        - Yes, I have uploaded it to raw.pixls.us under CC0 (link below)
+        - Yes, I will upload one following docs/SAMPLES.md
+        - No, I can't share a file
+    validations:
+      required: true
+
+  - type: input
+    id: sample-link
+    attributes:
+      label: Sample link
+      description: The raw.pixls.us link to your CC0 sample.
+      placeholder: https://raw.pixls.us/getfile.php/.../nice/....NEF
+    validations:
+      required: false
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else?
+      description: Error messages, how the result differs from Adobe's, other settings you used, and so on.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked docs/compat.md and the existing camera support issues.
+          required: true
+        - label: I removed personal information (my name in file paths, serial numbers, GPS data) from everything I pasted.
+          required: true

@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest something ticoraw could do better or differently.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Describing the problem you want solved, not only the solution, helps us find the best fit. For open-ended questions, [Discussions](https://github.com/lukaj99/ticoraw/discussions) may be a better place.
+
+        Note that the project ships source code only and does not distribute prebuilt binaries, because of JPEG XS patent considerations (see the patent notice in the [README](https://github.com/lukaj99/ticoraw#patent-notice)).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do, and what gets in the way today?
+      placeholder: I convert a whole memory card at a time, and ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: The behaviour, command, flag or API you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Workarounds you use now, or other tools that do this.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of ticoraw?
+      multiple: true
+      options:
+        - Command-line tool
+        - DNG output (metadata, previews, compression)
+        - Rust library API
+        - Bindings for other languages (C, Python, JavaScript)
+        - Documentation
+        - Testing and conformance
+        - Other
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this myself (see CONTRIBUTING.md).
+          required: false

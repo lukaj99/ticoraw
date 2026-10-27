@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/lukaj99/ticoraw/discussions
+    about: Ask how to install or use ticoraw, or share what you made with it.
+  - name: Where to get support
+    url: https://github.com/lukaj99/ticoraw/blob/main/SUPPORT.md
+    about: Quick checks that solve most problems, and where each kind of request goes.
+  - name: Report a security vulnerability
+    url: https://github.com/lukaj99/ticoraw/security/advisories/new
+    about: Please report security problems privately, never in a public issue.
