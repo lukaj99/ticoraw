@@ -79,7 +79,9 @@
           <fieldset>
             <legend>Preview</legend>
             <label><input type="radio" name="preview" value="auto" checked />
-              Full-size preview, so photo browsers show the picture (recommended)</label>
+              Medium-size preview, so photo browsers show the picture (recommended): the
+              camera's own, usually about 1600 pixels wide, or one made from the raw data for
+              HLG photos</label>
             <label><input type="radio" name="preview" value="none" />
               Small thumbnail only (files about 1 MB smaller)</label>
           </fieldset>
@@ -97,7 +99,8 @@
             <label><input type="radio" name="output" value="page" checked />
               Keep them here, then download them one by one or as one ZIP file</label>
             <label id="folder-option"><input type="radio" name="output" value="folder" />
-              Save each one straight into a folder you choose</label>
+              Save each one straight into a folder you choose (a DNG already there is
+              never replaced: that file is skipped)</label>
             <p id="folder-note" class="small" hidden>
               Saving into a folder needs a browser such as Chrome or Edge on a computer.
             </p>
@@ -117,7 +120,7 @@
         </div>
         <div class="progress">
           <progress id="progress" max="1" value="0" aria-labelledby="summary"></progress>
-          <p id="summary" role="status" aria-live="polite">No files yet.</p>
+          <p id="summary" role="status" aria-live="polite" tabindex="-1">No files yet.</p>
           <p id="ignored" class="small" hidden></p>
         </div>
         <div class="table-wrap">

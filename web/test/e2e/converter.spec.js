@@ -2,8 +2,8 @@
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { dngCfaSha256, manifest, readZip, sample, sha256, ticoraw } from "./helpers.js";
 
 const MANIFEST = manifest();
@@ -274,4 +274,160 @@ test("timing: 24 MP and 45 MP frames", async ({ page }) => {
     console.log(`${id} (${mp.toFixed(1)} MP): ${times[id].cold} ms cold, ${times[id].warm} ms warm`);
   }
   console.log(`${workers.trim()} (navigator.hardwareConcurrency in this browser: ${await page.evaluate(() => navigator.hardwareConcurrency)})`);
+});
+
+// Folder mode, with showDirectoryPicker answering with the origin private file system: the
+// same FileSystemDirectoryHandle API that a folder on disk gets.
+async function openWithFolder(page, setUp = () => {}) {
+  await page.addInitScript(() => {
+    window.showDirectoryPicker = async () => navigator.storage.getDirectory();
+  });
+  await page.addInitScript(setUp);
+  await open(page);
+  await page.getByRole("radio", { name: /straight into a folder/ }).check();
+}
+
+/** `{ name: size }` for the files in the picked folder (its top level). */
+const folderFiles = (page) =>
+  page.evaluate(async () => {
+    const out = {};
+    for await (const [name, h] of (await navigator.storage.getDirectory()).entries()) {
+      out[name] = h.kind === "file" ? (await h.getFile()).size : "folder";
+    }
+    return out;
+  });
+
+/** Copies of sample `id` as `names` (relative paths) under a fresh folder; their paths. */
+function copies(info, id, names) {
+  return names.map((name, i) => {
+    const p = info.outputPath("in", name);
+    mkdirSync(dirname(p), { recursive: true });
+    copyFileSync(sample(id), p);
+    // Distinct times, so that the page does not take two same-named copies for one file.
+    utimesSync(p, 1_700_000_000 + i, 1_700_000_000 + i);
+    return p;
+  });
+}
+
+test("folder: names never collide, an existing DNG is skipped, never replaced", async ({ page }, info) => {
+  needSamples("z5ii_he_dx");
+  await openWithFolder(page);
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const w = await (await root.getFileHandle("DSC_0002.dng", { create: true })).createWritable();
+    await w.write("old");
+    await w.close();
+  });
+  // Three files whose DNG names are the same (two differ only in case), and one whose DNG
+  // is already there.
+  const names = ["a/DSC_0001.NEF", "b/DSC_0001.NEF", "c/dsc_0001.nef", "d/DSC_0002.NEF"];
+  await page.locator("#pick-files").setInputFiles(copies(info, "z5ii_he_dx", names));
+  await expect(page.locator('#rows tr[data-state="ready"]')).toHaveCount(4);
+  await convertAll(page);
+
+  await expect(page.locator('#rows tr[data-state="done"]')).toHaveCount(3);
+  const skipped = page.locator('#rows tr[data-state="exists"]');
+  await expect(skipped).toHaveCount(1);
+  await expect(skipped).toContainText("Skipped: DSC_0002.dng already exists in the folder.");
+  await expect(page.locator("#summary")).toHaveText(
+    "3 files converted. 1 file skipped: its DNG already exists in the folder.",
+  );
+  const cells = await page.locator('#rows tr[data-state="done"] td[data-label="DNG"]').allTextContents();
+  const saved = cells.map((t) => /^Saved as (.+) \(/.exec(t)[1]).sort();
+  expect(saved).toEqual(["DSC_0001 (2).dng", "DSC_0001.dng", "dsc_0001 (3).dng"]);
+  // Every row that says "Saved as" has its own file, and nothing else was written.
+  const onDisk = await folderFiles(page);
+  expect(Object.keys(onDisk).sort()).toEqual([...saved, "DSC_0002.dng"].sort());
+  expect(onDisk["DSC_0002.dng"]).toBe(3);
+  for (const n of saved) expect(onDisk[n]).toBeGreaterThan(1_000_000);
+  const b64 = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const file = await (await root.getFileHandle("dsc_0001 (3).dng")).getFile();
+    const url = await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.readAsDataURL(file);
+    });
+    return url.slice(url.indexOf(",") + 1);
+  });
+  expect((await dngCfaSha256(Buffer.from(b64, "base64"))).sha).toBe(MANIFEST.z5ii_he_dx.cfa_sha256);
+  // Nothing is left to convert: focus goes to the summary, from where Tab reaches the list.
+  await expect(page.locator("#summary")).toBeFocused();
+});
+
+test("folder: a failed write leaves no file behind", async ({ page }, info) => {
+  needSamples("z5ii_he_dx");
+  await openWithFolder(page, () => {
+    FileSystemWritableFileStream.prototype.write = () =>
+      Promise.reject(new DOMException("The disk is full.", "QuotaExceededError"));
+  });
+  await page.locator("#pick-files").setInputFiles(copies(info, "z5ii_he_dx", ["DSC_0001.NEF"]));
+  await convertAll(page);
+  await expect(page.locator('#rows tr[data-state="failed"]')).toHaveCount(1);
+  expect(await folderFiles(page)).toEqual({});
+});
+
+test("folder: when saving is no longer allowed, the run stops cleanly", async ({ page }, info) => {
+  needSamples("z5ii_he_dx");
+  // The first file is saved; then the browser refuses every write, as when the permission
+  // is revoked during a run.
+  await openWithFolder(page, () => {
+    const write = FileSystemWritableFileStream.prototype.write;
+    let calls = 0;
+    FileSystemWritableFileStream.prototype.write = function (...args) {
+      if (calls++ === 0) return write.apply(this, args);
+      return Promise.reject(new DOMException("Permission revoked.", "NotAllowedError"));
+    };
+  });
+  const names = Array.from({ length: 8 }, (_, i) => `DSC_000${i + 1}.NEF`);
+  await page.locator("#pick-files").setInputFiles(copies(info, "z5ii_he_dx", names));
+  await expect(page.locator('#rows tr[data-state="ready"]')).toHaveCount(8);
+  await page.locator("#convert").click();
+  await expect(page.locator("#stop")).toBeHidden({ timeout: 200_000 });
+
+  await expect(page.locator('#rows tr[data-state="done"]')).toHaveCount(1);
+  // The others wait for a folder that can be written: no failures, no "Report a problem".
+  await expect(page.locator('#rows tr[data-state="ready"]')).toHaveCount(7);
+  await expect(page.locator("#rows")).toContainText("Not saved: the browser did not allow saving");
+  await expect(page.locator("#rows")).not.toContainText("Report a problem");
+  await expect(page.locator("#rows")).not.toContainText("TypeError");
+  await expect(page.locator("#folder-chosen")).toHaveText(/did not allow saving into that folder/);
+  const files = await folderFiles(page);
+  expect(Object.keys(files)).toHaveLength(1);
+  expect(Object.values(files)[0]).toBeGreaterThan(1_000_000);
+  // Files are left to convert, so focus goes back to Convert.
+  await expect(page.locator("#convert")).toHaveText("Convert 7 files");
+  await expect(page.locator("#convert")).toBeFocused();
+});
+
+test("keyboard: after Stop, focus is on Convert", async ({ page }, info) => {
+  needSamples("z9_he");
+  await open(page);
+  const names = Array.from({ length: 8 }, (_, i) => `z9_${i + 1}.NEF`);
+  await page.locator("#pick-files").setInputFiles(copies(info, "z9_he", names));
+  await expect(page.locator('#rows tr[data-state="ready"]')).toHaveCount(8);
+  await page.locator("#convert").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#stop")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#stop")).toBeHidden();
+  await expect(page.locator("#rows")).toContainText("Stopped. Convert again to resume.");
+  await expect(page.locator("#convert")).toBeEnabled();
+  await expect(page.locator("#convert")).toBeFocused();
+});
+
+test("ZIP entry names cannot point outside the folder they are extracted into", async ({ page }, info) => {
+  needSamples("z5ii_he_dx");
+  await open(page);
+  const nef = readFileSync(sample("z5ii_he_dx"));
+  await page.locator("#pick-files").setInputFiles([
+    { name: "..\\..\\evil.NEF", mimeType: "application/octet-stream", buffer: nef },
+    { name: "a\\b.NEF", mimeType: "application/octet-stream", buffer: nef },
+  ]);
+  await convertAll(page);
+  await expect(page.locator('#rows tr[data-state="done"]')).toHaveCount(2);
+  const [zip] = await Promise.all([page.waitForEvent("download"), page.locator("#zip").click()]);
+  const file = info.outputPath("names.zip");
+  await zip.saveAs(file);
+  expect(readZip(readFileSync(file)).map((e) => e.name).sort()).toEqual(["a/b.dng", "evil.dng"]);
 });

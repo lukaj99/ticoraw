@@ -3,9 +3,11 @@
 // and saving in files.js.
 //
 // Files go through these states:
-//   checking -> ready -> converting -> done | failed
+//   checking -> ready -> converting -> done | failed | exists
 //            -> classic | unsupported | failed        (decided from the file's headers)
-// "Stop" returns converting files to ready.
+// "exists": folder mode found a DNG of that name already there, so nothing was written.
+// "Stop", and a folder the browser no longer lets the page write to, return converting
+// files to ready.
 
 import init, { inspectPrefix, version } from "../pkg/web/ticoraw.js";
 import { TicorawWorker } from "../pkg/worker.js";
@@ -24,8 +26,8 @@ import {
   summary,
   uniqueName,
 } from "./core.js";
-import { canSaveToFolder, fromDrop, fromInput, saveInto } from "./files.js";
-import { crc32, zipParts } from "./zip.js";
+import { canSaveToFolder, existsIn, fromDrop, fromInput, saveInto } from "./files.js";
+import { crc32, safeEntryName, zipParts } from "./zip.js";
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -65,7 +67,14 @@ let checking = Promise.resolve();
 let pool = null;
 let running = false;
 let stopping = false;
-let outputDir = null;
+/**
+ * The folder DNGs are saved into, or null: `{ dir, claimed }`. `dir` is the directory handle;
+ * `claimed` holds the lower-cased paths given to files of this list, so that no two of them
+ * get the same name, whatever the order their conversions finish in.
+ */
+let folder = null;
+/** Set when the browser refused to write into `folder`; the run then stops. */
+let folderDenied = false;
 /** Lower-cased names given to converted files so far, so that ZIP entries are unique. */
 const taken = new Set();
 
@@ -150,7 +159,7 @@ function setUp() {
   ui.clear.addEventListener("click", clearList);
   ui.options.addEventListener("change", (ev) => {
     if (ev.target.name !== "output") return;
-    outputDir = null;
+    folder = null;
     ui.folderChosen.hidden = true;
   });
   ui.options.addEventListener("submit", (ev) => ev.preventDefault());
@@ -222,65 +231,97 @@ async function check(item) {
 async function convert() {
   if (running) return;
   const choice = readOptions();
-  if (choice.output === "folder" && outputDir === null) {
+  if (choice.output === "folder" && folder === null) {
     try {
-      outputDir = await showDirectoryPicker({ id: "ticoraw-dng", mode: "readwrite" });
+      const dir = await showDirectoryPicker({ id: "ticoraw-dng", mode: "readwrite" });
+      folder = { dir, claimed: new Set() };
     } catch (e) {
       if (e?.name === "AbortError") return; // the user closed the picker
       showFatal(`Could not open that folder: ${e?.message ?? e}`);
       return;
     }
     ui.folderChosen.hidden = false;
-    ui.folderChosen.textContent = `Saving into the folder “${outputDir.name}”.`;
+    ui.folderChosen.textContent = `Saving into the folder “${folder.dir.name}”.`;
   }
+  const out = choice.output === "folder" ? folder : null;
 
   running = true;
   stopping = false;
+  folderDenied = false;
   setRunning(true);
   pool ??= new TicorawWorker({ size: workerCount, url: new URL("../pkg/worker.js", import.meta.url) });
   const lane = async () => {
     for (;;) {
       await checking;
-      if (stopping) return;
+      if (stopping || folderDenied) return;
       const item = items.find((i) => i.state === "ready");
       if (!item) return;
-      await convertOne(item, choice);
+      await convertOne(item, choice, out);
     }
   };
   await Promise.all(Array.from({ length: workerCount }, lane));
   running = false;
-  setRunning(false);
+  if (folderDenied) {
+    // Ask for a folder again next time.
+    folder = null;
+    ui.folderChosen.hidden = false;
+    ui.folderChosen.textContent =
+      "The browser did not allow saving into that folder. Press Convert to choose a folder again.";
+  }
   refresh();
+  setRunning(false);
 }
 
-async function convertOne(item, choice) {
+const STOPPED = "Stopped. Convert again to resume.";
+const NOT_SAVED =
+  "Not saved: the browser did not allow saving into the folder. Convert again to choose a folder.";
+
+/** Converts one file, into the folder `out` (`{ dir, claimed }`) or, if null, the page. */
+async function convertOne(item, choice, out) {
   item.state = "converting";
+  item.note = null;
   renderRow(item);
   refresh();
-  const t0 = performance.now();
+  const path = safeEntryName(dngName(item.path));
+  // Claimed before the first await, so that no other lane can be given the same name.
+  const target = out ? uniqueName(path, out.claimed) : null;
+  let keepClaim = false;
   try {
-    const dng = await pool.toDng(item.file, dngOptions(choice, item.file.name));
-    item.ms = performance.now() - t0;
-    const path = dngName(item.path);
-    if (choice.output === "folder") {
-      item.savedAs = await saveInto(outputDir, path, new Blob([dng]));
-      item.out = { size: dng.length };
+    if (out && (await existsIn(out.dir, target))) {
+      // Already converted into this folder, or another file has that name: never overwrite.
+      Object.assign(item, { state: "exists", existing: target });
+      keepClaim = true;
     } else {
-      const crc = crc32(dng);
-      const blob = new Blob([dng], { type: "image/x-adobe-dng" });
-      item.out = { name: uniqueName(path, taken), blob, size: dng.length, crc, url: null };
+      const t0 = performance.now();
+      const dng = await pool.toDng(item.file, dngOptions(choice, item.file.name));
+      item.ms = performance.now() - t0;
+      if (!out) {
+        const crc = crc32(dng);
+        const blob = new Blob([dng], { type: "image/x-adobe-dng" });
+        item.out = { name: uniqueName(path, taken), blob, size: dng.length, crc, url: null };
+        item.state = "done";
+      } else if (folderDenied) {
+        Object.assign(item, { state: "ready", note: NOT_SAVED });
+      } else if ((await saveInto(out.dir, target, new Blob([dng]))) === "exists") {
+        Object.assign(item, { state: "exists", existing: target });
+        keepClaim = true;
+      } else {
+        Object.assign(item, { state: "done", savedAs: target, out: { size: dng.length } });
+        keepClaim = true;
+      }
     }
-    item.state = "done";
   } catch (e) {
     if (stopping) {
-      item.state = "ready";
-      item.stopped = true;
+      Object.assign(item, { state: "ready", note: STOPPED });
+    } else if (out && e?.name === "NotAllowedError") {
+      // Permission to the folder was refused or revoked: stop taking files, keep this one.
+      folderDenied = true;
+      Object.assign(item, { state: "ready", note: NOT_SAVED });
     } else {
-      // Permission to the folder was refused or revoked: ask for a folder again next time.
-      if (e?.name === "NotAllowedError") outputDir = null;
       Object.assign(item, failure(e));
     }
   }
+  if (target !== null && !keepClaim) out.claimed.delete(target.toLowerCase());
   renderRow(item);
   refresh();
 }
@@ -314,6 +355,7 @@ function clearList() {
   items.length = 0;
   seen.clear();
   taken.clear();
+  folder?.claimed.clear();
   ignoredCount = 0;
   ui.ignored.hidden = true;
   ui.rows.replaceChildren();
@@ -342,7 +384,10 @@ function readOptions() {
   };
 }
 
+/** Swaps Convert and Stop. Call `refresh()` first, so that Convert is enabled if it can be. */
 function setRunning(on) {
+  // Hiding Stop or disabling the options drops their focus to <body>: note it first.
+  const lost = document.activeElement === document.body || document.activeElement === ui.stop;
   ui.convert.hidden = on;
   ui.stop.hidden = !on;
   for (const el of ui.options.elements) {
@@ -350,9 +395,9 @@ function setRunning(on) {
     el.disabled = on;
   }
   if (on) ui.stop.focus();
-  else if (document.activeElement === document.body || document.activeElement === ui.stop) {
-    ui.convert.focus();
-  }
+  // After a run: Convert if there is more to convert (after Stop), else the summary of the
+  // run, from where Tab reaches the results.
+  else if (lost) (ui.convert.disabled ? ui.summary : ui.convert).focus();
 }
 
 /** Updates the buttons, the progress bar and the summary from the list. */
@@ -366,12 +411,13 @@ function refresh() {
     done: n("done"),
     failed: n("failed") + n("unsupported"),
     skipped: n("classic"),
+    exists: n("exists"),
   };
   const text = summary({ ...counts, running });
   if (ui.summary.textContent !== text) ui.summary.textContent = text;
-  const work = counts.ready + counts.converting + counts.done + counts.failed;
-  ui.progress.max = Math.max(1, work);
-  ui.progress.value = counts.done + counts.failed;
+  const finished = counts.done + counts.failed + counts.exists;
+  ui.progress.max = Math.max(1, finished + counts.ready + counts.converting);
+  ui.progress.value = finished;
   const toConvert = counts.ready + counts.checking;
   ui.convert.disabled = running || toConvert === 0;
   ui.convert.textContent =
@@ -448,6 +494,8 @@ function renderRow(item) {
       size.textContent = ` ${formatBytes(item.out.size)}`;
       result.append(a, size);
     }
+  } else if (item.state === "exists") {
+    status.textContent = `Skipped: ${item.existing} already exists in the folder.`;
   } else if (item.state === "failed" || item.state === "unsupported") {
     status.append(item.message, " ");
     if (item.link) status.append(link(item.link.href, item.link.text));
@@ -461,8 +509,7 @@ function renderRow(item) {
       status.append(d);
     }
   } else {
-    status.textContent =
-      item.state === "ready" && item.stopped ? "Stopped. Convert again to resume." : STATUS[item.state];
+    status.textContent = (item.state === "ready" && item.note) || STATUS[item.state];
   }
 }
 
