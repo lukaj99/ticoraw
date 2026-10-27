@@ -1,0 +1,27 @@
+[package]
+name = "ticoraw-dng"
+description = "Complete DNG writer for Nikon HE/HE* NEF raw files decoded by ticoraw: lossless JPEG tiles, previews, EXIF/XMP/MakerNote carry-over"
+keywords = ["nikon", "nef", "raw", "dng", "jpeg-xs"]
+categories = ["multimedia::images", "multimedia::encoding"]
+readme = "README.md"
+include = ["src/**", "Cargo.toml", "LICENSE-*", "README.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["parallel"]
+# Encode lossless JPEG tiles and render previews on all cores (also enables ticoraw's).
+parallel = ["dep:rayon", "ticoraw/parallel"]
+
+[dependencies]
+ticoraw = { path = "../ticoraw", version = "0.1.0", default-features = false }
+# 0.6 is the newest line that builds on the workspace MSRV (0.7 needs Rust 1.87).
+jpeg-encoder = { version = "0.6.1", default-features = false }
+rayon = { version = "1.12", optional = true }
+
+[lints]
+workspace = true
