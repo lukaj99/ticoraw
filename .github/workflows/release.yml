@@ -219,7 +219,9 @@ jobs:
             echo "::error::$bin --version printed '$got', expected 'ticoraw $VERSION'"
             exit 1
           fi
-          if [ "${TARGET%-musl}" != "$TARGET" ] && ldd "$bin" >/dev/null 2>&1; then
+          # A static(-pie) binary declares no shared-library dependencies. (`ldd` is not a
+          # reliable test: it exits 0 on static-pie executables on newer glibc.)
+          if [ "${TARGET%-musl}" != "$TARGET" ] && readelf -d "$bin" | grep -q '(NEEDED)'; then
             echo "::error::$bin is dynamically linked"
             exit 1
           fi
