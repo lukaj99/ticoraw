@@ -25,8 +25,13 @@ esac
 # Build the static library and ask rustc which system libraries it needs.
 log="$out/cargo-rustc.log"
 # --color never: CI sets CARGO_TERM_COLOR=always, whose escape codes would end up in the
-# library names parsed below.
-if ! cargo rustc --color never --manifest-path "$crate/Cargo.toml" --release --lib \
+# library names parsed below. On Windows both sides use the static CRT, so the C objects
+# and the Rust archive cannot disagree about it.
+crt=()
+if [ "$windows" = 1 ]; then
+  crt=(--config "target.'cfg(windows)'.rustflags=['-C', 'target-feature=+crt-static']")
+fi
+if ! cargo ${crt[@]+"${crt[@]}"} rustc --color never --manifest-path "$crate/Cargo.toml" --release --lib \
   --crate-type staticlib -- --print native-static-libs >"$log" 2>&1; then
   cat "$log" >&2
   exit 1
@@ -37,9 +42,10 @@ if [ "$windows" = 1 ]; then
   cc=${CC:-clang}
   lib="$target_dir/release/ticoraw_capi.lib"
   exe=.exe
-  # Rust links the dynamic CRT. MSVC linker flags (`/defaultlib:msvcrt`) are passed as
-  # `-defaultlib:msvcrt`, which link.exe also accepts and MSYS does not mistake for a path.
-  cflags=(-fms-runtime-lib=dll -D_CRT_SECURE_NO_WARNINGS)
+  # Static CRT on both sides (see above). MSVC linker flags such as `/defaultlib:libcmt`
+  # are passed as `-defaultlib:...`, which link.exe accepts and MSYS does not mistake for
+  # a path.
+  cflags=(-fms-runtime-lib=static -D_CRT_SECURE_NO_WARNINGS)
   libs=()
   for l in $native; do
     case "$l" in
