@@ -1,0 +1,24 @@
+# ITU-T T.81 lossless JPEG (SOF3) markers and typical segment heads. libFuzzer dictionary
+# format.
+
+soi="\xFF\xD8"
+eoi="\xFF\xD9"
+sof0="\xFF\xC0"
+sof3="\xFF\xC3"
+dht="\xFF\xC4"
+sos="\xFF\xDA"
+dri="\xFF\xDD"
+rst0="\xFF\xD0"
+rst1="\xFF\xD1"
+rst7="\xFF\xD7"
+stuffed="\xFF\x00"
+fill="\xFF\xFF"
+
+# SOF3 with precision 14/16, 2 components; SOS with predictor 1, Pt 0.
+sof3_14_2c="\xFF\xC3\x00\x0E\x0E"
+sof3_16_1c="\xFF\xC3\x00\x0B\x10"
+sos_2c="\xFF\xDA\x00\x0A\x02"
+sos_tail="\x01\x00\x00"
+dri_len="\x00\x04"
+dht_dc0="\xFF\xC4\x00\x24\x00"
+comp_entry="\x00\x11\x00"
