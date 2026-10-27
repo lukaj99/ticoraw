@@ -1,0 +1,22 @@
+{
+  "name": "ticoraw-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "In-browser converter from Nikon HE/HE* NEF to DNG, built on the ticoraw WebAssembly package",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "sh build.sh",
+    "serve": "node scripts/serve.mjs dist 8080",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

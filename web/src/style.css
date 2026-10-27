@@ -1,0 +1,402 @@
+/* ticoraw web converter. System fonts only: the page loads nothing from other sites. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa;
+  --fg: #1d1d1b;
+  --muted: #55554f;
+  --panel: #ffffff;
+  --line: #d6d6cf;
+  --accent: #0b5cad;
+  --accent-fg: #ffffff;
+  --ok: #17663a;
+  --warn: #8a4b00;
+  --bad: #a3221b;
+  --privacy-bg: #e8f3ec;
+  --privacy-line: #8cc2a1;
+  --focus: #b3530b;
+  --radius: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614;
+    --fg: #ecece6;
+    --muted: #b5b5ac;
+    --panel: #20201d;
+    --line: #3d3d38;
+    --accent: #7ab8f5;
+    --accent-fg: #0b1b2b;
+    --ok: #7ad19c;
+    --warn: #f0b46b;
+    --bad: #ff8f86;
+    --privacy-bg: #17291e;
+    --privacy-line: #3f7a55;
+    --focus: #ffb366;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* The hidden attribute must win over the display values below. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.wrap {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -10rem;
+  background: var(--panel);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  z-index: 1;
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+header.site {
+  padding: 2rem 0 1rem;
+}
+
+.brand {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0.25rem 0 0.5rem;
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.lede {
+  font-size: 1.1rem;
+  max-width: 44rem;
+  margin: 0;
+}
+
+.small {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.step {
+  display: inline-grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.95rem;
+}
+
+.privacy {
+  background: var(--privacy-bg);
+  border: 1px solid var(--privacy-line);
+  border-radius: var(--radius);
+  padding: 0.25rem 1.25rem;
+}
+
+.privacy h2 {
+  margin-top: 0.75rem;
+}
+
+.notice {
+  border: 2px solid var(--bad);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.drop {
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.drop.over {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.drop-hint {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+.buttons,
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.buttons {
+  justify-content: center;
+}
+
+button,
+a.button {
+  font: inherit;
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+  text-decoration: none;
+  min-height: 2.75rem;
+}
+
+button.primary,
+.drop button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  margin: 0;
+  padding: 0.5rem 1rem 0.75rem;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+fieldset label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.3rem 0;
+}
+
+fieldset input {
+  margin-top: 0.3rem;
+  flex: none;
+}
+
+label.disabled {
+  color: var(--muted);
+}
+
+.progress {
+  margin: 1rem 0 0.5rem;
+}
+
+progress {
+  width: 100%;
+  height: 0.75rem;
+  accent-color: var(--accent);
+}
+
+#summary {
+  margin: 0.25rem 0;
+  font-weight: 600;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+td[data-label="File"] {
+  overflow-wrap: anywhere;
+}
+
+tr[data-state="done"] td[data-label="Status"] {
+  color: var(--ok);
+}
+
+tr[data-state="classic"] td[data-label="Status"] {
+  color: var(--muted);
+}
+
+tr[data-state="unsupported"] td[data-label="Status"] {
+  color: var(--warn);
+}
+
+tr[data-state="failed"] td[data-label="Status"] {
+  color: var(--bad);
+}
+
+tr[data-state="converting"] td[data-label="Status"]::before {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.4em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+td details {
+  margin-top: 0.25rem;
+  color: var(--fg);
+}
+
+td code {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.faq details {
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 0;
+}
+
+.faq summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.patent {
+  border-top: 1px solid var(--line);
+  margin-top: 2rem;
+  color: var(--muted);
+}
+
+footer.site {
+  margin-top: 2rem;
+  padding: 1rem 0 2rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Phones: one card per file instead of a table row. */
+@media (max-width: 40rem) {
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+  }
+
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  tr {
+    border-bottom: 1px solid var(--line);
+    padding: 0.5rem 0;
+  }
+
+  td {
+    border: 0;
+    padding: 0.2rem 0.75rem;
+  }
+
+  td:empty {
+    display: none;
+  }
+
+  td::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+  }
+
+  .toolbar button {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
