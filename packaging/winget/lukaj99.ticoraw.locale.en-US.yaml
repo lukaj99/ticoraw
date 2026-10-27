@@ -1,0 +1,29 @@
+# TEMPLATE - do not submit to winget-pkgs. Binary installs are gated pending
+# patent-licensing review; see packaging/README.md. Replace __VERSION__ before use.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+
+PackageIdentifier: lukaj99.ticoraw
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: Luka Jovanovic
+PublisherUrl: https://github.com/lukaj99
+PublisherSupportUrl: https://github.com/lukaj99/ticoraw/issues
+PackageName: ticoraw
+PackageUrl: https://github.com/lukaj99/ticoraw
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/lukaj99/ticoraw#licence
+ShortDescription: Decoder for Nikon High Efficiency (HE/HE*) NEF raw files
+Description: |-
+  ticoraw decodes the JPEG XS / TicoRAW codestreams in Nikon HE and HE* NEF raw files to
+  the exact CFA values Adobe's converters produce, and writes them out as DNG.
+  JPEG XS and TicoRAW are covered by patents; see the patent notice in the README.
+Moniker: ticoraw
+Tags:
+- dng
+- jpeg-xs
+- nef
+- nikon
+- raw
+ReleaseNotesUrl: https://github.com/lukaj99/ticoraw/releases/tag/v__VERSION__
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

@@ -1,0 +1,65 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+#
+# Run locally with `cargo deny check` (install: `cargo install --locked cargo-deny`).
+# CI runs the same checks in .github/workflows/deny.yml on pull requests and weekly.
+
+[graph]
+# Empty: evaluate the dependency graph for every target platform, so a dependency that
+# only Windows or Linux pulls in is still checked.
+targets = []
+all-features = true
+
+[advisories]
+# RustSec advisories (vulnerabilities, unsound code, unmaintained crates) fail the check.
+# To accept one, add `{ id = "RUSTSEC-YYYY-NNNN", reason = "..." }` with a real reason.
+ignore = [
+  # Both come from gungraun 0.18, the Linux-only instruction-count benchmark harness: a
+  # dev-dependency that never reaches a shipped crate or binary. gungraun 0.18 is pinned
+  # for the 1.85 MSRV; drop these once it is upgraded or replaced.
+  { id = "RUSTSEC-2025-0141", reason = "bincode 1.3.3 (unmaintained): dev-only, via gungraun" },
+  { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 (unmaintained): dev-only, via gungraun-macros" },
+]
+yanked = "warn"
+
+[licenses]
+# Every licence any dependency in the graph uses must be listed here. Keep this list
+# permissive: no copyleft, because the binaries and crates are MIT OR Apache-2.0.
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  # jpeg-encoder (used by ticoraw-dng) is "(MIT OR Apache-2.0) AND IJG". The IJG licence
+  # requires binary distributions to state that "this software is based in part on the
+  # work of the Independent JPEG Group"; THIRD-PARTY-NOTICES.md carries that statement.
+  "IJG",
+  "ISC",
+  "MIT",
+  # unicode-ident's data tables.
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.8
+exceptions = []
+# The list above is a policy, not an inventory: BSD, ISC and Zlib are pre-approved even
+# while no current dependency uses them.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# The workspace crates are published, so they are checked like any other crate.
+ignore = false
+
+[bans]
+# Two versions of one crate bloat the build; warn rather than fail, since the fix is
+# usually upstream.
+multiple-versions = "warn"
+# `version = "*"` requirements are not allowed. Path dependencies inside the workspace
+# carry a version too, because they are published.
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+# Only crates.io: no git dependencies and no other registries.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
