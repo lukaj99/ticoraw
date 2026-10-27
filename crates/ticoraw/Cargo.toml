@@ -20,5 +20,23 @@ parallel = ["dep:rayon"]
 [dependencies]
 rayon = { version = "1.12", optional = true }
 
+[dev-dependencies]
+# criterion 0.8 needs Rust 1.86; 0.7 keeps `cargo +1.85 check --all-targets` working.
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+
+# Instruction-count benchmarks run under Valgrind, which CI provides on Linux only.
+# gungraun (formerly iai-callgrind) 0.19+ needs Rust 1.85.1; 0.18 keeps the 1.85 MSRV.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = "0.18.2"
+
+# Both benchmark binaries bring their own `main`; `cargo test` does not build them.
+[[bench]]
+name = "decode"
+harness = false
+
+[[bench]]
+name = "instructions"
+harness = false
+
 [lints]
 workspace = true

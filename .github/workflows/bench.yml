@@ -1,0 +1,145 @@
+name: Bench
+
+# Performance regression gate. Wall-clock timings on shared runners vary by tens of percent
+# from run to run, so the gate counts instructions instead: gungraun (formerly
+# iai-callgrind) runs each decoder stage under Valgrind's Callgrind, which gives the same
+# count for the same binary on every run. The job builds and measures the base commit and
+# the pull request in one job, on one runner and toolchain, and fails when any benchmark
+# executes more than 5% more instructions than on the base.
+#
+# The criterion job records wall-clock throughput on pushes to main. It is informational
+# only and never fails on a slowdown.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Over 5% more instructions than the base fails the job.
+  LIMIT: ir=5%
+
+jobs:
+  instructions:
+    name: instruction counts (PR vs base)
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      GUNGRAUN_HOME: ${{ github.workspace }}/target/gungraun
+      # The run's exact commit pair: PR base or the previous tip of main.
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq valgrind
+          valgrind --version
+
+      - name: Check out the base commit
+        id: base
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base commit for this event; measuring without a comparison."
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          if [ -f "$RUNNER_TEMP/base/crates/ticoraw/benches/instructions.rs" ]; then
+            echo "dir=$RUNNER_TEMP/base" >> "$GITHUB_OUTPUT"
+          else
+            echo "The base commit has no instruction benchmarks; measuring without a comparison."
+          fi
+
+      # The runner binary must match the gungraun library version exactly, and the base
+      # may lock a different one, so each tree gets the runner its own Cargo.lock names.
+      - name: Install gungraun-runner
+        env:
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: |
+          install_runner() {
+            local version
+            version=$(awk '/^name = "gungraun"$/ { getline; gsub(/"/, "", $3); print $3 }' "$1/Cargo.lock")
+            local root="$HOME/.cargo/gungraun-runner-$version"
+            if [ ! -x "$root/bin/gungraun-runner" ]; then
+              cargo install --locked --quiet gungraun-runner --version "$version" --root "$root"
+            fi
+            echo "$version $root/bin/gungraun-runner"
+          }
+          read -r head_version head_runner < <(install_runner .)
+          [ -x "$head_runner" ] || { echo "::error::gungraun-runner install failed"; exit 1; }
+          echo "HEAD_RUNNER=$head_runner" >> "$GITHUB_ENV"
+          if [ -n "$BASE_DIR" ]; then
+            read -r base_version base_runner < <(install_runner "$BASE_DIR")
+            [ -x "$base_runner" ] || { echo "::error::gungraun-runner install failed"; exit 1; }
+            echo "BASE_RUNNER=$base_runner" >> "$GITHUB_ENV"
+            if [ "$base_version" != "$head_version" ]; then
+              echo "::warning::gungraun $base_version (base) vs $head_version (head): baselines may not be comparable; skipping the comparison."
+              echo "SKIP_COMPARE=1" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      # `parallel` is off so rayon's work stealing does not add noise to the counts.
+      - name: Measure the base commit
+        if: steps.base.outputs.dir != '' && env.SKIP_COMPARE != '1'
+        working-directory: ${{ steps.base.outputs.dir }}
+        env:
+          GUNGRAUN_RUNNER: ${{ env.BASE_RUNNER }}
+        run: >
+          cargo bench --locked -p ticoraw --no-default-features --bench instructions --
+          --save-baseline=base
+
+      - name: Measure this commit and compare
+        env:
+          GUNGRAUN_RUNNER: ${{ env.HEAD_RUNNER }}
+          COMPARE: ${{ steps.base.outputs.dir != '' && env.SKIP_COMPARE != '1' }}
+        run: |
+          args=()
+          if [ "$COMPARE" = "true" ]; then
+            args=(--baseline=base "--callgrind-limits=$LIMIT")
+          fi
+          set -o pipefail
+          cargo bench --locked -p ticoraw --no-default-features --bench instructions -- \
+            "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/instructions.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/instructions.txt" ] || exit 0
+          {
+            echo "### Instruction counts (this commit | base, limit $LIMIT)"
+            echo '```'
+            grep -E '^instructions::|Instructions:|regressed|Gungraun result' "$RUNNER_TEMP/instructions.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  criterion:
+    name: wall-clock throughput (informational)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: All cores
+        run: cargo bench --locked -p ticoraw --bench decode -- --noplot
+      - name: One core
+        env:
+          RAYON_NUM_THREADS: 1
+        run: cargo bench --locked -p ticoraw --bench decode -- --noplot decode_ticoraw
+      - uses: actions/upload-artifact@v4
+        with:
+          name: criterion
+          path: target/criterion
+          retention-days: 30
