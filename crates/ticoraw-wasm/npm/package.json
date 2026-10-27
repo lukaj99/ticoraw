@@ -1,0 +1,52 @@
+{
+  "name": "ticoraw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Decode Nikon High Efficiency (HE/HE*) NEF raw files and convert them to DNG, in the browser or Node.js (WebAssembly)",
+  "license": "MIT OR Apache-2.0",
+  "author": "Luka Jovanovic <lukaj99@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lukaj99/ticoraw.git",
+    "directory": "crates/ticoraw-wasm"
+  },
+  "homepage": "https://github.com/lukaj99/ticoraw/tree/main/crates/ticoraw-wasm",
+  "keywords": ["nikon", "nef", "raw", "dng", "jpeg-xs", "wasm", "webassembly"],
+  "type": "module",
+  "main": "./node/ticoraw.js",
+  "types": "./web/ticoraw.d.ts",
+  "exports": {
+    ".": {
+      "node": {
+        "types": "./node/ticoraw.d.ts",
+        "default": "./node/ticoraw.js"
+      },
+      "default": {
+        "types": "./web/ticoraw.d.ts",
+        "default": "./web/ticoraw.js"
+      }
+    },
+    "./web": {
+      "types": "./web/ticoraw.d.ts",
+      "default": "./web/ticoraw.js"
+    },
+    "./worker": {
+      "types": "./index.d.ts",
+      "default": "./worker.js"
+    },
+    "./ticoraw_bg.wasm": "./web/ticoraw_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "web/",
+    "node/",
+    "worker.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
