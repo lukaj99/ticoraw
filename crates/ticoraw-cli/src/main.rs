@@ -1,13 +1,24 @@
-//! `ticoraw`: inspect, decode and verify Nikon High Efficiency (HE/HE*) NEF raw files.
+//! `ticoraw`: convert Nikon High Efficiency (HE/HE*) NEF raw files to DNG, and inspect,
+//! decode and verify them.
 //!
-//! All file I/O lives here; the `ticoraw` library only ever sees byte slices.
+//! All file I/O lives here; the `ticoraw` and `ticoraw-dng` libraries only ever see byte
+//! slices.
 
 mod args;
+mod convert;
 mod decode;
 mod inspect;
 mod json;
+mod report;
 mod scan;
 mod verify;
+
+#[cfg(test)]
+#[path = "../../ticoraw/tests/common/mod.rs"]
+mod common;
+#[cfg(test)]
+#[path = "../tests/support/synthetic.rs"]
+mod synthetic;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
@@ -18,15 +29,17 @@ use std::time::Duration;
 use args::{Arg, Args};
 
 const HELP: &str = "\
-ticoraw: inspect, decode and verify Nikon High Efficiency (HE/HE*) NEF raw files
+ticoraw: convert Nikon High Efficiency (HE/HE*) NEF raw files to DNG
 
 Usage: ticoraw <command> [options]
 
 Commands:
+  convert   Convert HE/HE* NEFs (files or whole directories) to complete DNGs
+  decode    Decode one NEF to a complete DNG (or a 16-bit PGM)
   inspect   Describe NEF containers and TicoRAW codestreams without decoding
-  decode    Decode a NEF to an uncompressed CFA DNG (or a 16-bit PGM)
   verify    Compare a decoded NEF sample-for-sample against a reference DNG
   scan      Classify every NEF in a directory, optionally decoding them all
+  report    Print a privacy-safe JSON bug report for one NEF
   help      Show help for a command
 
 Options:
@@ -39,29 +52,35 @@ Exit status: 0 on success, 1 on failure, 2 on usage errors.
 /// The subcommands, used for dispatch and per-command help.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Topic {
+    Convert,
     Inspect,
     Decode,
     Verify,
     Scan,
+    Report,
 }
 
 impl Topic {
     fn from_name(name: &str) -> Option<Self> {
         Some(match name {
+            "convert" => Self::Convert,
             "inspect" => Self::Inspect,
             "decode" => Self::Decode,
             "verify" => Self::Verify,
             "scan" => Self::Scan,
+            "report" => Self::Report,
             _ => return None,
         })
     }
 
     fn help(self) -> &'static str {
         match self {
+            Self::Convert => convert::HELP,
             Self::Inspect => inspect::HELP,
             Self::Decode => decode::HELP,
             Self::Verify => verify::HELP,
             Self::Scan => scan::HELP,
+            Self::Report => report::HELP,
         }
     }
 
@@ -79,10 +98,12 @@ impl Topic {
 enum Command {
     Help(Option<Topic>),
     Version,
+    Convert(convert::Options),
     Inspect(inspect::Options),
     Decode(decode::Options),
     Verify(verify::Options),
     Scan(scan::Options),
+    Report(report::Options),
 }
 
 /// A malformed command line (exit status 2).
@@ -138,10 +159,12 @@ fn main() -> ExitCode {
 
 fn name(t: Topic) -> &'static str {
     match t {
+        Topic::Convert => "convert",
         Topic::Inspect => "inspect",
         Topic::Decode => "decode",
         Topic::Verify => "verify",
         Topic::Scan => "scan",
+        Topic::Report => "report",
     }
 }
 
@@ -172,6 +195,8 @@ fn parse(items: Vec<OsString>) -> Result<Command, UsageError> {
     let topic =
         Topic::from_name(&first).ok_or_else(|| top(format!("unknown command {first:?}")))?;
     let parsed = match topic {
+        Topic::Convert => convert::parse(&mut args).map(|o| o.map(Command::Convert)),
+        Topic::Report => report::parse(&mut args).map(|o| o.map(Command::Report)),
         Topic::Inspect => inspect::parse(&mut args).map(|o| o.map(Command::Inspect)),
         Topic::Decode => decode::parse(&mut args).map(|o| o.map(Command::Decode)),
         Topic::Verify => verify::parse(&mut args).map(|o| o.map(Command::Verify)),
@@ -201,6 +226,8 @@ fn run(command: Command) -> Result<ExitCode, CliError> {
         Command::Decode(o) => decode::run(&o),
         Command::Verify(o) => verify::run(&o),
         Command::Scan(o) => scan::run(&o),
+        Command::Convert(o) => convert::run(&o),
+        Command::Report(o) => report::run(&o),
     }
 }
 
@@ -260,7 +287,14 @@ mod tests {
 
     #[test]
     fn usage_lines_exist() {
-        for t in [Topic::Inspect, Topic::Decode, Topic::Verify, Topic::Scan] {
+        for t in [
+            Topic::Convert,
+            Topic::Inspect,
+            Topic::Decode,
+            Topic::Verify,
+            Topic::Scan,
+            Topic::Report,
+        ] {
             assert!(
                 t.usage()
                     .starts_with(&format!("Usage: ticoraw {}", name(t)))

@@ -1,4 +1,4 @@
-//! `ticoraw decode`: NEF -> uncompressed CFA DNG or 16-bit PGM.
+//! `ticoraw decode`: one NEF -> complete DNG (via `ticoraw-dng`) or 16-bit PGM.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -7,23 +7,28 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use ticoraw::CfaImage;
+use ticoraw_dng::{CarriedMetadata, Compression, Preview};
 
 use crate::args::{Arg, Args};
 use crate::{CliError, ms, read_input, unexpected};
 
 pub const HELP: &str = "\
-Decode a NEF to an uncompressed CFA DNG (or a 16-bit PGM)
+Decode one NEF to a complete DNG (or a 16-bit PGM)
 
 Usage: ticoraw decode [options] <file.nef>
 
-Decodes the High Efficiency (TicoRAW) raw strip and writes the CFA mosaic. A DNG keeps the
-CFA pattern, black/white levels, colour matrix, as-shot white balance, orientation and default
-crop; a PGM is the bare mosaic as big-endian 16-bit samples (maxval 16383 for 14-bit data,
-else 65535). Output is written atomically and never overwrites the input.
+Decodes the High Efficiency (TicoRAW) raw strip and writes a complete DNG: the CFA mosaic as
+lossless JPEG tiles, the camera's EXIF, GPS, XMP and MakerNote, a preview and a thumbnail,
+the colour matrix, as-shot white balance, orientation and default crop, and the input's
+file name as OriginalRawFileName. A PGM is the bare mosaic as big-endian 16-bit samples
+(maxval 16383 for 14-bit data, else 65535). Output is written atomically and never
+overwrites the input. To convert many files, use `ticoraw convert`.
 
 Options:
   -o, --output <path>    Output file [default: the input path with a .dng/.pgm extension]
   --format <dng|pgm>     Output format [default: dng]
+  --uncompressed         Store the DNG's mosaic uncompressed (about three times larger)
+  --no-preview           Leave out the DNG's full-size preview (the thumbnail stays)
   -f, --force            Overwrite an existing output file
   -h, --help             Show this help
 
@@ -50,6 +55,8 @@ pub struct Options {
     pub input: PathBuf,
     pub output: Option<PathBuf>,
     pub format: Format,
+    pub compression: Compression,
+    pub preview: Preview,
     pub force: bool,
 }
 
@@ -58,6 +65,8 @@ pub fn parse(args: &mut Args) -> Result<Option<Options>, String> {
     let mut input = None;
     let mut output = None;
     let mut format = Format::Dng;
+    let mut compression = Compression::LosslessJpeg;
+    let mut preview = Preview::Auto;
     let mut force = false;
     while let Some(arg) = args.next_arg()? {
         match arg {
@@ -76,6 +85,8 @@ pub fn parse(args: &mut Args) -> Result<Option<Options>, String> {
                         }
                     }
                 }
+                "--uncompressed" => compression = Compression::Uncompressed,
+                "--no-preview" => preview = Preview::None,
                 "-f" | "--force" => force = true,
                 _ => return Err(format!("unknown option {s}")),
             },
@@ -84,10 +95,16 @@ pub fn parse(args: &mut Args) -> Result<Option<Options>, String> {
         }
     }
     let input = input.ok_or("no input file")?;
+    let dng_only = compression != Compression::LosslessJpeg || preview != Preview::Auto;
+    if format == Format::Pgm && dng_only {
+        return Err("--uncompressed and --no-preview apply to DNG output only".into());
+    }
     Ok(Some(Options {
         input,
         output,
         format,
+        compression,
+        preview,
         force,
     }))
 }
@@ -123,8 +140,21 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
 
     let t2 = Instant::now();
     let bytes = match o.format {
-        Format::Dng => ticoraw::dng::encode_uncompressed_dng(&raw)
-            .map_err(|e| CliError::Failure(format!("{}: {e}", o.input.display())))?,
+        Format::Dng => {
+            let fail =
+                |e: ticoraw_dng::Error| CliError::Failure(format!("{}: {e}", o.input.display()));
+            let carried = CarriedMetadata::from_nef(&nef).map_err(fail)?;
+            let opts = ticoraw_dng::Options {
+                compression: o.compression,
+                preview: o.preview,
+                original_raw_file_name: o
+                    .input
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned()),
+                ..ticoraw_dng::Options::default()
+            };
+            ticoraw_dng::write(&raw, &carried, &opts).map_err(fail)?
+        }
         Format::Pgm => encode_pgm(&raw.image),
     };
     let t_encode = t2.elapsed();
@@ -168,7 +198,7 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
 
 /// Whether `a` and `b` name the same existing file: same canonical path, or (on Unix) the same
 /// inode, which also catches hard links.
-fn same_file(a: &Path, b: &Path) -> bool {
+pub fn same_file(a: &Path, b: &Path) -> bool {
     if let (Ok(x), Ok(y)) = (a.canonicalize(), b.canonicalize()) {
         if x == y {
             return true;
@@ -187,7 +217,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// Writes `bytes` to `path` atomically: everything goes to a temporary file in the same
 /// directory first, which then replaces `path` (`force`) or is linked in only if `path`
 /// does not exist yet. A failed write never leaves a partial file or destroys an old one.
-fn write_output(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliError> {
+pub fn write_output(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliError> {
     let exists = || {
         CliError::Failure(format!(
             "{} already exists (use --force to overwrite)",
