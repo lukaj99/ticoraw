@@ -24,12 +24,14 @@ esac
 
 # Build the static library and ask rustc which system libraries it needs.
 log="$out/cargo-rustc.log"
-if ! cargo rustc --manifest-path "$crate/Cargo.toml" --release --lib --crate-type staticlib \
-  -- --print native-static-libs >"$log" 2>&1; then
+# --color never: CI sets CARGO_TERM_COLOR=always, whose escape codes would end up in the
+# library names parsed below.
+if ! cargo rustc --color never --manifest-path "$crate/Cargo.toml" --release --lib \
+  --crate-type staticlib -- --print native-static-libs >"$log" 2>&1; then
   cat "$log" >&2
   exit 1
 fi
-native=$(sed -n 's/.*native-static-libs: //p' "$log" | tail -n 1)
+native=$(sed -n 's/.*native-static-libs: //p' "$log" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')
 
 if [ "$windows" = 1 ]; then
   cc=${CC:-clang}
@@ -42,6 +44,9 @@ if [ "$windows" = 1 ]; then
   for l in $native; do
     case "$l" in
     /*) libs+=(-Xlinker "-${l#/}") ;;
+    # `kernel32.lib` as a bare name is an input-file path to clang; `-lkernel32` makes the
+    # linker search the Windows SDK library path instead.
+    *.lib) libs+=("-l${l%.lib}") ;;
     *) libs+=("$l") ;;
     esac
   done
