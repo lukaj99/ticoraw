@@ -1,0 +1,34 @@
+/* Small additions to mdBook's built-in themes. Colours come from the theme variables, so
+   light and dark themes both work. */
+
+/* Wide tables (flags, compatibility) scroll inside the page instead of overflowing it. */
+.content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.content table td,
+.content table th {
+  vertical-align: top;
+}
+
+/* Keyboard keys in the install guide. */
+kbd {
+  display: inline-block;
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--quote-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--quote-bg);
+  font-family: var(--mono-font);
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Long command-line help lines wrap on phones rather than forcing sideways scrolling of the
+   whole page; the code block itself still scrolls. */
+.content pre {
+  max-width: 100%;
+}
