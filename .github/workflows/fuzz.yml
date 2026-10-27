@@ -1,0 +1,106 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Fuzzing time per target, in seconds
+        default: "600"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: decode_nef, dict: nef, max_len: 16384 }
+          - { target: inspect_nef, dict: nef, max_len: 16384 }
+          - { target: inspect_nef_prefix, dict: nef, max_len: 16384 }
+          - { target: decode_ticoraw, dict: codestream, max_len: 16384 }
+          - { target: decode_dng_cfa, dict: dng, max_len: 16384 }
+          - { target: decode_lossless_jpeg, dict: ljpeg, max_len: 4096 }
+          - { target: codestream_structured, dict: "", max_len: 4096 }
+          - { target: dng_roundtrip, dict: "", max_len: 4096 }
+          - { target: ljpeg_roundtrip, dict: "", max_len: 4096 }
+    env:
+      TARGET: ${{ matrix.target }}
+      DICT: ${{ matrix.dict }}
+      MAX_LEN: ${{ matrix.max_len }}
+      SECONDS_PER_TARGET: ${{ inputs.seconds || '600' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: ${{ matrix.target }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Build
+        run: cargo fuzz build --fuzz-dir fuzz -a "$TARGET"
+
+      - name: Add synthetic seeds
+        run: cargo run --release --manifest-path fuzz/Cargo.toml --example gen_seeds -- fuzz/corpus
+
+      - name: Replay known crash reproducers
+        run: |
+          dir="fuzz/artifacts-regressions/$TARGET"
+          if [ -d "$dir" ] && [ -n "$(ls -A "$dir")" ]; then
+            # Given files rather than a corpus directory, libFuzzer runs each one once.
+            cargo fuzz run --fuzz-dir fuzz -a "$TARGET" "$dir"/* -- -timeout=10 -rss_limit_mb=2048
+          else
+            echo "no reproducers for $TARGET"
+          fi
+
+      - name: Fuzz
+        run: |
+          case "$SECONDS_PER_TARGET" in
+            '' | *[!0-9]*) echo "seconds must be a whole number" >&2; exit 1 ;;
+          esac
+          set -- -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -rss_limit_mb=2048 \
+            -max_len="$MAX_LEN" -print_final_stats=1
+          if [ -n "$DICT" ]; then set -- "$@" -dict="fuzz/dict/$DICT.dict"; fi
+          cargo fuzz run --fuzz-dir fuzz -a "$TARGET" "fuzz/corpus/$TARGET" -- "$@"
+
+      - name: Minimise corpus
+        if: success()
+        run: cargo fuzz cmin --fuzz-dir fuzz -a "$TARGET" "fuzz/corpus/$TARGET"
+
+      - name: Save corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore

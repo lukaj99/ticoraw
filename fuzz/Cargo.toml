@@ -1,0 +1,111 @@
+[package]
+name = "ticoraw-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+# Same as the main crate, so the copied encoders stay identical to the test copies.
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "cargo-fuzz targets for the ticoraw decoder"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Kept out of the main workspace: cargo-fuzz needs nightly and sanitizer flags.
+[workspace]
+members = ["."]
+
+[features]
+# Fuzz the rayon code paths too (off by default: single-threaded is faster per execution
+# and the output is identical either way).
+parallel = ["ticoraw/parallel"]
+
+[dependencies]
+libfuzzer-sys = { version = "0.4.13", features = ["arbitrary-derive"] }
+ticoraw = { path = "../crates/ticoraw", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+cast_precision_loss = "allow"
+too_many_lines = "allow"
+needless_range_loop = "allow"
+single_match_else = "allow"
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "decode_nef"
+path = "fuzz_targets/decode_nef.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inspect_nef"
+path = "fuzz_targets/inspect_nef.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inspect_nef_prefix"
+path = "fuzz_targets/inspect_nef_prefix.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_ticoraw"
+path = "fuzz_targets/decode_ticoraw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_dng_cfa"
+path = "fuzz_targets/decode_dng_cfa.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_lossless_jpeg"
+path = "fuzz_targets/decode_lossless_jpeg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "codestream_structured"
+path = "fuzz_targets/codestream_structured.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dng_roundtrip"
+path = "fuzz_targets/dng_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ljpeg_roundtrip"
+path = "fuzz_targets/ljpeg_roundtrip.rs"
+test = false
+doc = false
+bench = false

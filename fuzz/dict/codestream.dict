@@ -1,0 +1,43 @@
+# JPEG XS (ISO/IEC 21122-1) marker codes as TicoRAW codestreams use them, plus the
+# segment lengths and vendor bytes Nikon writes. libFuzzer dictionary format.
+
+soc="\xFF\x10"
+eoc="\xFF\x11"
+pih="\xFF\x12"
+cdt="\xFF\x13"
+wgt="\xFF\x14"
+com="\xFF\x15"
+nlt="\xFF\x16"
+cwd="\xFF\x17"
+cts="\xFF\x18"
+crg="\xFF\x19"
+slh="\xFF\x20"
+cap="\xFF\x50"
+
+soc_cap="\xFF\x10\xFF\x50"
+cap_len="\x00\x22"
+pih_head="\xFF\x12\x00\x27"
+cdt_head="\xFF\x13\x00\x0E"
+slh_head="\xFF\x20\x00\x04"
+slh0="\xFF\x20\x00\x04\x00\x00"
+slh1="\xFF\x20\x00\x04\x00\x01"
+intopix="CONTACT_INTOPIX_"
+cap_bits="\xEF\xC0"
+
+# PIH tail: Nc Ng Ss Bw Fq|Br Fslc|Ppoc|Cpih NLx|NLy Lh|Rl|Qpih|Fs|Rm
+pih_tail="\x04\x04\x08\x12\x44\x10\x51\x14"
+bw18="\x12"
+bw20="\x14"
+fq_br="\x44"
+nikon_ext="\x50\x88\x70\x83\xF0\x15\x23\xD1\x49\xCD\x3F\x7F\x07"
+
+# CDT component entries: bit depth 14, 1x1 sampling, 5 levels / untransformed.
+cdt_5="\x0E\x11\x51"
+cdt_0="\x0E\x11\x00"
+
+# Frame sizes and precinct-length style values.
+dim_16="\x00\x10"
+dim_64="\x00\x40"
+dim_max="\xFF\xFC"
+len24_0="\x00\x00\x00"
+len24_max="\xFF\xFF\xFF"
