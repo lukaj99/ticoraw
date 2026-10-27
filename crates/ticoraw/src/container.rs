@@ -1,5 +1,5 @@
 //! NEF (TIFF) container: locates the raw strip and reads the Nikon MakerNote fields a
-//! decoder needs.
+//! decoder needs, and locates the metadata a DNG writer carries over ([`parse_metadata`]).
 //!
 //! This stage module is public for testing and advanced use; its API may change in minor
 //! releases. [`RawCodec`] is re-exported at the crate root as part of the stable surface.
@@ -158,6 +158,79 @@ pub fn parse_nef_prefix(nef: &[u8], file_len: usize) -> Result<NefContainer<'_>>
         strip_len,
         strip_offset,
         maker_note,
+    })
+}
+
+/// Where a NEF keeps the metadata a DNG writer carries over, as positions in the file.
+///
+/// Every offset and range is absolute in the input buffer (a NEF's TIFF header sits at byte
+/// 0, so TIFF offsets and file positions coincide). Ranges are checked to lie inside the
+/// input; IFD offsets are reported as stored and still have to be parsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NefMetadata {
+    /// Byte order of the TIFF structure, and so of every value in the EXIF, GPS and
+    /// MakerNote data.
+    pub byte_order: tiff::ByteOrder,
+    /// Offset of the EXIF IFD (IFD0 tag 0x8769), if present.
+    pub exif_ifd: Option<u32>,
+    /// Offset of the GPS IFD (IFD0 tag 0x8825), if present.
+    pub gps_ifd: Option<u32>,
+    /// The XMP packet (IFD0 tag 0x02BC), if present.
+    pub xmp: Option<std::ops::Range<usize>>,
+    /// The MakerNote value (EXIF tag 0x927C) as stored, Nikon header included, if present.
+    pub maker_note: Option<std::ops::Range<usize>>,
+    /// Embedded JPEG previews: every IFD with `JPEGInterchangeFormat` (0x0201) and
+    /// `JPEGInterchangeFormatLength` (0x0202) whose stream lies inside the input and starts
+    /// with an SOI marker, in IFD walk order (IFD0 first). A pointer that does not satisfy
+    /// that is not a usable preview and is left out.
+    pub jpeg_previews: Vec<std::ops::Range<usize>>,
+}
+
+/// Locates the metadata of a NEF (or any TIFF) that a DNG writer carries over: EXIF, GPS,
+/// XMP, the MakerNote and embedded JPEG previews.
+///
+/// Unlike [`parse_nef`] this does not require a Nikon `Make` or a raw IFD.
+///
+/// # Errors
+///
+/// [`TicoError::Container`] or [`TicoError::Truncated`] when the TIFF header, an IFD
+/// reachable from IFD0, or the EXIF IFD is malformed.
+pub fn parse_metadata(nef: &[u8]) -> Result<NefMetadata> {
+    let t = Tiff::parse(nef, 0)?;
+    let ifds = tiff::all_ifds(&t)?;
+    let ifd0 = t.ifd(t.first_ifd)?;
+    let pointer =
+        |tag| -> Result<Option<u32>> { Ok(tiff::first_uint(&t, &ifd0, tag)?.map(|v| v as u32)) };
+    let exif_ifd = pointer(0x8769)?;
+    let gps_ifd = pointer(0x8825)?;
+    let range = |e: &tiff::Entry| {
+        let b = t.bytes(e);
+        e.pos..e.pos + b.len()
+    };
+    let xmp = ifd0.get(0x02BC).map(range);
+    let maker_note = match exif_ifd {
+        Some(off) => t.ifd(off)?.get(0x927C).map(range),
+        None => None,
+    };
+    let jpeg_previews = ifds
+        .iter()
+        .filter_map(|ifd| {
+            let at = tiff::first_uint(&t, ifd, 0x201).ok()??;
+            let len = tiff::first_uint(&t, ifd, 0x202).ok()??;
+            let start = usize::try_from(at).ok()?;
+            let end = start.checked_add(usize::try_from(len).ok()?)?;
+            nef.get(start..end)
+                .filter(|j| j.starts_with(&[0xFF, 0xD8]))
+                .map(|_| start..end)
+        })
+        .collect();
+    Ok(NefMetadata {
+        byte_order: t.order,
+        exif_ifd,
+        gps_ifd,
+        xmp,
+        maker_note,
+        jpeg_previews,
     })
 }
 

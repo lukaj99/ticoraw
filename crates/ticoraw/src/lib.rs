@@ -19,8 +19,9 @@
 //! # API stability
 //!
 //! The stable surface is the crate root ([`inspect_nef`], [`inspect_nef_prefix`],
-//! [`decode_nef`], [`decode_ticoraw`] and the data types they return, plus [`TicoError`]
-//! and [`Result`]) and [`dng::decode_dng_cfa`] / [`dng::encode_uncompressed_dng`].
+//! [`decode_nef`], [`decode_ticoraw`], [`unique_camera_model`] and the data types they
+//! return, plus [`TicoError`] and [`Result`]) and [`dng::decode_dng_cfa`] /
+//! [`dng::encode_uncompressed_dng`].
 //!
 //! The stage modules [`bitstream`], [`container`], [`entropy`], [`header`], [`mct`],
 //! [`tiff`] and [`wavelet`] are public for testing and for tools that want to look inside a
@@ -371,6 +372,14 @@ pub fn decode_nef(nef: &[u8]) -> Result<DecodedRaw> {
     })
 }
 
+/// The DNG `UniqueCameraModel` for a camera: Adobe's camera name for the bodies with a
+/// built-in profile (for example `Nikon Z 6 3` for `NIKON Z6_3`), so Adobe software applies
+/// its own camera profile, and `"<make> <model>"` for any other camera.
+#[must_use]
+pub fn unique_camera_model(make: &str, model: &str) -> String {
+    adobe_camera_name(model).map_or_else(|| format!("{make} {model}"), str::to_owned)
+}
+
 /// Adobe's camera name for a TIFF `Model`, written as the DNG `UniqueCameraModel` so Adobe
 /// software applies its own camera profile (tone curve, looks) to our DNGs.
 ///
@@ -636,5 +645,17 @@ mod tests {
     fn adobe_names_known_bodies() {
         assert_eq!(adobe_camera_name("NIKON Z6_3"), Some("Nikon Z 6 3"));
         assert_eq!(adobe_camera_name("NIKON Z 99"), None);
+    }
+
+    #[test]
+    fn unique_camera_model_falls_back_to_make_and_model() {
+        assert_eq!(
+            super::unique_camera_model("NIKON CORPORATION", "NIKON ZR"),
+            "Nikon ZR"
+        );
+        assert_eq!(
+            super::unique_camera_model("NIKON CORPORATION", "NIKON Z 99"),
+            "NIKON CORPORATION NIKON Z 99"
+        );
     }
 }
