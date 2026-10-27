@@ -135,13 +135,20 @@ set_toml_version Cargo.toml workspace.package
 set_toml_version crates/ticoraw-py/Cargo.toml package
 
 # Path dependencies on workspace crates: ticoraw-x = { path = "...", version = "..." }.
+# crates/ticoraw-py/Cargo.toml was already staged by set_toml_version above, so its pins
+# are rewritten on that staged copy.
 for manifest in crates/*/Cargo.toml; do
-  [ "$manifest" = crates/ticoraw-py/Cargo.toml ] && continue
-  stage "$manifest"
+  if [ "$manifest" = crates/ticoraw-py/Cargo.toml ]; then
+    src="$tmp/new/$manifest"
+  else
+    stage "$manifest"
+    src=$manifest
+  fi
   awk -v new="$new" '
     /^ticoraw[A-Za-z0-9_-]* = [{].*path = / { sub(/version = "[^"]*"/, "version = \"" new "\"") }
     { print }
-  ' "$manifest" >"$tmp/new/$manifest"
+  ' "$src" >"$tmp/new/$manifest.part"
+  mv "$tmp/new/$manifest.part" "$tmp/new/$manifest"
 done
 
 # "version" right after the package's own "name" (the top level of package.json, and the

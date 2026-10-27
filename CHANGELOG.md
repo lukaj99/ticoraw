@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-27
+
 ### Added
 
 - **`ticoraw-dng`**, a new crate that writes complete DNGs (`convert(&nef, &Options)`, or
@@ -235,4 +237,5 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scan` refuses non-regular files and, without `--decode`, reads only a prefix of each
   file.
 
+[0.2.0]: https://github.com/lukaj99/ticoraw/releases/tag/v0.2.0
 [0.1.0]: https://github.com/lukaj99/ticoraw/releases/tag/v0.1.0

@@ -23,8 +23,8 @@ default = ["parallel"]
 parallel = ["ticoraw/parallel", "ticoraw-dng/parallel"]
 
 [dependencies]
-ticoraw = { path = "../ticoraw", version = "0.1.0", default-features = false }
-ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0", default-features = false }
+ticoraw = { path = "../ticoraw", version = "0.2.0", default-features = false }
+ticoraw-dng = { path = "../ticoraw-dng", version = "0.2.0", default-features = false }
 
 # The workspace lints, except that `unsafe_code` is `deny` rather than `forbid`: the C ABI
 # needs `unsafe`, and it is allowed in exactly one module (`src/ffi.rs`).

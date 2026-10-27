@@ -21,8 +21,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Single-threaded on purpose: wasm threads need nightly Rust and a cross-origin isolated
 # page. Run one Web Worker per core instead (js/worker.js).
-ticoraw = { path = "../ticoraw", version = "0.1.0", default-features = false }
-ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0", default-features = false }
+ticoraw = { path = "../ticoraw", version = "0.2.0", default-features = false }
+ticoraw-dng = { path = "../ticoraw-dng", version = "0.2.0", default-features = false }
 wasm-bindgen = "0.2.129"
 js-sys = "0.3.106"
 

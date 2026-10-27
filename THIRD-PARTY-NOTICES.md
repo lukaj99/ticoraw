@@ -50,11 +50,11 @@ Group's software; its licence text, with the copyright notices, is reproduced be
 | slab | 0.4.12 | MIT | https://github.com/tokio-rs/slab |
 | syn | 3.0.9 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | terminal_size | 0.4.4 | MIT OR Apache-2.0 | https://github.com/eminence/terminal-size |
-| ticoraw | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-capi | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-cli | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-dng | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-wasm | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-capi | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-cli | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-dng | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-wasm | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
 | wasm-bindgen | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
 | wasm-bindgen-macro | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro |
@@ -485,7 +485,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### MIT License
 
-Used by: ticoraw 0.1.0, ticoraw-capi 0.1.0, ticoraw-cli 0.1.0, ticoraw-dng 0.1.0, ticoraw-wasm 0.1.0
+Used by: ticoraw 0.2.0, ticoraw-capi 0.2.0, ticoraw-cli 0.2.0, ticoraw-dng 0.2.0, ticoraw-wasm 0.2.0
 
 ```text
 MIT License

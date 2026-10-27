@@ -47,9 +47,9 @@ Group's software; its licence text, with the copyright notices, is reproduced be
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | same-file | 1.0.6 | Unlicense OR MIT | https://github.com/BurntSushi/same-file |
 | syn | 3.0.9 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
-| ticoraw | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-dng | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
-| ticoraw-py | 0.1.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-dng | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
+| ticoraw-py | 0.2.0 | MIT OR Apache-2.0 | https://github.com/lukaj99/ticoraw |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
 | winapi-util | 0.1.11 | Unlicense OR MIT | https://github.com/BurntSushi/winapi-util |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
@@ -453,7 +453,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### MIT License
 
-Used by: ticoraw 0.1.0, ticoraw-dng 0.1.0, ticoraw-py 0.1.0
+Used by: ticoraw 0.2.0, ticoraw-dng 0.2.0, ticoraw-py 0.2.0
 
 ```text
 MIT License

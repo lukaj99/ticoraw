@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "ticoraw"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "gungraun",
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "ticoraw-capi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ticoraw",
  "ticoraw-dng",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "ticoraw-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ctrlc",
  "terminal_size",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "ticoraw-dng"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "jpeg-encoder",
  "rayon",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "ticoraw-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "js-sys",
  "ticoraw",
