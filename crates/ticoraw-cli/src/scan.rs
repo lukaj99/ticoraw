@@ -84,7 +84,7 @@ const STRIP_HEAD_LEN: usize = 64 << 10;
 /// File contents for scanning: the whole file when decoding, otherwise the shortest
 /// prefix (plus the file length) that classifies it. Only regular files are read, and
 /// never past their stat'd length.
-fn read_for_scan(path: &Path, whole: bool) -> io::Result<ScanInput> {
+pub fn read_for_scan(path: &Path, whole: bool) -> io::Result<ScanInput> {
     let meta = std::fs::metadata(path)?;
     if !meta.is_file() {
         return Err(io::Error::other("not a regular file"));
@@ -120,9 +120,9 @@ fn read_for_scan(path: &Path, whole: bool) -> io::Result<ScanInput> {
     }
 }
 
-struct ScanInput {
-    bytes: Vec<u8>,
-    file_len: usize,
+pub struct ScanInput {
+    pub bytes: Vec<u8>,
+    pub file_len: usize,
 }
 
 fn classify(input: &ScanInput) -> Class {
@@ -294,7 +294,7 @@ fn write_summary(out: &mut impl Write, t: &Tally, decode: bool, wall: Duration) 
 }
 
 /// Gathers `.nef`/`.nrw` files (any case) under `dir`; unreadable subdirectories become errors.
-fn collect(
+pub fn collect(
     dir: &Path,
     recursive: bool,
     files: &mut Vec<PathBuf>,
@@ -329,7 +329,7 @@ fn collect(
 }
 
 /// `.nef`, or `.nrw` (used by some Nikon bodies for the same container), in any case.
-fn is_nef(path: &Path) -> bool {
+pub fn is_nef(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("nef") || e.eq_ignore_ascii_case("nrw"))
 }

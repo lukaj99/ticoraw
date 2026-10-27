@@ -1,6 +1,6 @@
 [package]
 name = "ticoraw-cli"
-description = "Command-line tool to inspect, decode and verify Nikon HE/HE* NEF raw files"
+description = "Command-line tool to convert Nikon HE/HE* NEF raw files to DNG, and to inspect, decode and verify them"
 keywords = ["nikon", "nef", "raw", "jpeg-xs", "dng"]
 categories = ["multimedia::images", "command-line-utilities"]
 readme = "../../README.md"
@@ -13,12 +13,18 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# Compiled builds of this tool contain the decoder. Publishing them (release assets,
+# installers, package registries) is pending patent-licensing review: CI may build and test
+# the binary and keep it as a workflow artifact, but every publish step must require both a
+# manual workflow_dispatch input and the repository variable ALLOW_BINARY_DISTRIBUTION ==
+# 'true'.
 [[bin]]
 name = "ticoraw"
 path = "src/main.rs"
 
 [dependencies]
 ticoraw = { path = "../ticoraw", version = "0.1.0" }
+ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0" }
 
 [lints]
 workspace = true
