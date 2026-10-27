@@ -32,11 +32,30 @@ Rust needs Microsoft's C++ build tools. Install "Build Tools for Visual Studio" 
 **Desktop development with C++** workload (the Rust installer offers to do this), open a
 new PowerShell window and try again.
 
-### "requires rustc 1.85 or newer"
+### ``feature `edition2024` is required`` or "requires rustc 1.85 or newer"
 
-Your Rust is too old. Run `rustup update`, then try again. If you installed Rust from your
-Linux distribution's packages, install it with [rustup](https://rustup.rs) instead, or
-upgrade the package.
+Your Rust is older than 1.85, the oldest version that can build ticoraw. With Rust 1.84 or
+older, `cargo install` stops straight away with a message like this one:
+
+```text
+error: failed to parse manifest at `.../crates/ticoraw-cli/Cargo.toml`
+
+Caused by:
+  feature `edition2024` is required
+
+  The package requires the Cargo feature called `edition2024`, but that feature is not
+  stabilized in this version of Cargo (1.80.1 (376290515 2024-07-16)).
+  Consider trying a newer version of Cargo (this may require the nightly release).
+```
+
+The file it names can differ (for example `fuzz/Cargo.toml`). Despite the hint, you do
+**not** need the nightly release: any stable Rust from 1.85 on works.
+
+- If you installed Rust with rustup, run `rustup update`, check that `cargo --version`
+  prints 1.85 or higher, then try again.
+- If you installed Rust from your Linux distribution's packages (Debian's and Ubuntu's
+  are usually older than 1.85), remove that package and install Rust with
+  [rustup](https://rustup.rs) instead, as in the [install guide](install.md#linux).
 
 ## Converting
 

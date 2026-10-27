@@ -26,19 +26,31 @@ What the release workflow does today:
 | Step | When it runs |
 |---|---|
 | Check the tag, run every test, build, package and smoke-test the CLI for 8 targets | Every release run |
-| Upload the archives as workflow artifacts (7 days), write `SHA256SUMS`, attest provenance | **Only** when the repository variable `ALLOW_BINARY_DISTRIBUTION` is `true` (public workflow artifacts can be downloaded by any signed-in user) |
 | Create or update the GitHub Release, **source code only**, notes from CHANGELOG.md | Every release run |
-| Attach the binary archives and `SHA256SUMS` to the Release | **Only** when run by hand with `attach_binaries = yes` **and** the repository variable `ALLOW_BINARY_DISTRIBUTION` is `true` |
+| Upload the archives as workflow artifacts (7 days), write `SHA256SUMS`, attest provenance, attach the archives and `SHA256SUMS` to the Release | **Only** when run by hand with `attach_binaries = yes` **and** the repository variable `ALLOW_BINARY_DISTRIBUTION` is `true` (public workflow artifacts can be downloaded by any signed-in user, so a tag push uploads nothing compiled) |
 | Publish the crates (source) to crates.io | Only when run by hand with `publish_crates = yes` |
 
 `ALLOW_BINARY_DISTRIBUTION` is not set. Do not set it until the licensing review is done
-and its outcome allows distribution. A tag push can never attach binaries, whatever the
-variable says. The attach job also runs in the `binary-distribution` environment, so you
-can add required reviewers to it (Settings, Environments) as a third lock.
+and its outcome allows distribution. A tag push can never upload or attach binaries,
+whatever the variable says. The attach job also runs in the `binary-distribution`
+environment, so you can add required reviewers to it (Settings, Environments) as a third
+lock.
 
-Workflow artifacts of a public repository can be downloaded by any signed-in GitHub user
-while they are kept. If the review concludes that this also counts as distribution, make
-the `build` job conditional on the same gate.
+The same two keys guard the other compiled channels:
+
+| Channel | Workflow | Needs |
+|---|---|---|
+| Release archives (upload, attest, attach) | `release.yml` | a manual run with `attach_binaries = yes` **and** the variable |
+| PyPI wheels | `python.yml` | a manual run with `publish` ticked **and** the variable |
+| npm package | `wasm.yml` | a manual run with `publish` ticked **and** the variable |
+| Web converter at `/convert/` on the docs site | `pages.yml` | a manual run on `main` with `include_converter = yes` **and** the variable |
+| CI workflow artifacts of the C library, wheels and npm package | `capi.yml`, `python.yml`, `wasm.yml` | the variable (they are uploaded only for the gated jobs and for testing) |
+
+Every Pages deployment replaces the whole site. A push to `main` (or a manual run
+without `include_converter = yes`) deploys the docs alone, so it takes a previously
+deployed `/convert/` offline; the run says so in a notice. To keep the converter online,
+run the "Docs website" workflow by hand again with `include_converter = yes` after such a
+deployment.
 
 The Homebrew formula is allowed because Homebrew builds it on the user's machine. Keep it
 that way: no `bottle do` block, and do not submit it to homebrew-core, which builds and
@@ -48,17 +60,36 @@ hosts bottles.
 
 ### 1. Prepare the release commit
 
-1. Move the `## [Unreleased]` entries in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD`
-   and add the `[X.Y.Z]: https://github.com/lukaj99/ticoraw/releases/tag/vX.Y.Z` link.
-2. Set `version = "X.Y.Z"` in `[workspace.package]` in the root `Cargo.toml`, and the
-   `ticoraw` dependency version in `crates/ticoraw-cli/Cargo.toml` and
-   `crates/ticoraw-dng/Cargo.toml` (and any other crate that depends on a workspace crate).
-   Run `cargo check --workspace` to update `Cargo.lock`.
-3. Check it: `scripts/release/check_version.sh vX.Y.Z` must print `X.Y.Z`. It fails if a
-   crate version, an internal dependency requirement or the changelog section is off.
-4. Regenerate the notices if dependencies changed:
-   `scripts/release/third_party_notices.sh` (see below), then
-   `cargo deny check`.
+1. Make sure `## [Unreleased]` in `CHANGELOG.md` lists everything in the release.
+2. Bump the version everywhere with one command (preview it first with `--dry-run`):
+
+   ```sh
+   scripts/release/bump_version.sh --dry-run X.Y.Z
+   scripts/release/bump_version.sh X.Y.Z      # --date YYYY-MM-DD for another release date
+   ```
+
+   It sets the version in all of these, whatever their old values:
+
+   | File | What |
+   |---|---|
+   | `Cargo.toml` | `[workspace.package] version` |
+   | `crates/ticoraw-cli`, `-dng`, `-capi`, `-wasm` `Cargo.toml` | the `version` of each path dependency on a workspace crate (`cargo publish` needs it) |
+   | `crates/ticoraw-py/Cargo.toml` | `[package] version`: a separate workspace, and maturin takes the wheel version from it |
+   | `crates/ticoraw-wasm/npm/package.json` | `"version"` of the npm package (`crates/ticoraw-wasm/scripts/build.sh` refuses to build without it) |
+   | `web/package.json`, `web/package-lock.json` | `"version"` of the web converter package |
+   | `CHANGELOG.md` | moves the `[Unreleased]` entries under `## [X.Y.Z] - YYYY-MM-DD` and adds the `[X.Y.Z]: .../releases/tag/vX.Y.Z` link |
+
+   Then it regenerates the three lockfiles, `Cargo.lock`, `crates/ticoraw-py/Cargo.lock`
+   and `fuzz/Cargo.lock` (`cargo update --workspace`, which changes only the workspace
+   crates' own entries; CI builds the main and Python workspaces with `--locked`), regenerates
+   `THIRD-PARTY-NOTICES.md`, which lists the crate versions (needs cargo-about, see below;
+   `--skip-notices` leaves it for later), and runs the check in the next step. It does not
+   commit, tag or push.
+3. Check it: `scripts/release/check_version.sh vX.Y.Z` must print `X.Y.Z`. It fails if any
+   of the files above has another version, if a lockfile is out of date or if the
+   changelog section is missing or empty. The release workflow runs the same check on the
+   tag.
+4. If dependencies changed, also run `cargo deny check`.
 5. Run every CI check from CONTRIBUTING.md plus the full ground-truth suite on the
    conformance folder. Only release when every pair is bit-exact.
 6. Merge to `main`.
@@ -79,9 +110,9 @@ The push starts `release.yml`, which:
 3. `build`: the `ticoraw` CLI for x86_64 and aarch64 Linux (glibc and static musl),
    macOS and Windows, each smoke-tested and packaged as
    `ticoraw-X.Y.Z-<target>.tar.gz` (`.zip` on Windows) holding the binary, `README.md`,
-   `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.md`, with a build provenance
-   attestation;
-4. `checksums`: `SHA256SUMS` over all archives;
+   `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.md` (attested and uploaded
+   only on a gated manual run, see [the patent gate](#the-patent-gate));
+4. `checksums` (gated the same way): `SHA256SUMS` over all archives;
 5. `release`: creates the GitHub Release (or updates its notes) with the CHANGELOG.md
    section, marked as a prerelease for `X.Y.Z-pre` versions, and a note that it is
    source only.
@@ -138,7 +169,10 @@ Only once the licensing review allows distributing compiled decoders:
 3. Fill the Scoop and winget templates: replace `__VERSION__`, `__RELEASE_DATE__` and the
    `__SHA256_*__` values (from `SHA256SUMS`; winget wants upper case), drop the
    "TEMPLATE" comments, and submit them to a Scoop bucket and to winget-pkgs.
-4. Update the README's install section and the patent notice to match.
+4. To host the web converter, run the "Docs website" workflow (`pages.yml`) by hand on
+   `main` with `include_converter = yes`. Later pushes to `main` redeploy the docs without
+   it, so run it by hand again after each one (see [the patent gate](#the-patent-gate)).
+5. Update the README's install section and the patent notice to match.
 
 ## Verifying an archive
 

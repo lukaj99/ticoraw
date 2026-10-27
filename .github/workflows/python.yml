@@ -6,8 +6,11 @@ name: Python
 #
 # PATENT GATE: wheels contain a compiled JPEG XS / TicoRAW decoder, so they are NOT
 # published, pending patent-licensing review (see the patent notice in README.md). They
-# are built and tested here and kept only as short-lived workflow artifacts. The `publish`
-# job runs only when BOTH hold:
+# are built and tested here. They are uploaded as short-lived workflow artifacts ONLY when
+# the repository variable ALLOW_BINARY_DISTRIBUTION is 'true' (any signed-in user can
+# download the artifacts of a public repository); otherwise they never leave the runner.
+# Only the source distribution is always kept as an artifact. The `publish` job runs only
+# when BOTH hold:
 #   1. the run was started by hand (workflow_dispatch) with the `publish` input ticked, and
 #   2. the repository variable ALLOW_BINARY_DISTRIBUTION is set to 'true' (unset today).
 # Do not remove or weaken either condition without that review.

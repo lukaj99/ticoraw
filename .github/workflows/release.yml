@@ -5,14 +5,16 @@ name: Release
 # PATENT GATE. JPEG XS (and TicoRAW) are covered by patents that are licensed per decoder
 # copy, so publishing compiled decoders is on hold pending patent-licensing review. This
 # workflow therefore:
-#   - always checks the tag, runs the full test suite, builds and packages the CLI for
-#     every platform, writes SHA256SUMS and provenance attestations, and keeps the
-#     archives as short-lived workflow artifacts (for testing, not for distribution);
+#   - always checks the tag, runs the full test suite, and builds, packages and
+#     smoke-tests the CLI for every platform;
 #   - always creates or updates the GitHub Release, with source code only;
-#   - attaches the binary archives to the Release ONLY when BOTH (a) it is run by hand
+#   - lets the compiled archives leave the runner ONLY when BOTH (a) it is run by hand
 #     (workflow_dispatch) with attach_binaries = yes AND (b) the repository variable
-#     ALLOW_BINARY_DISTRIBUTION is 'true'. The variable is unset today: leave it that way
-#     until the licensing review says otherwise;
+#     ALLOW_BINARY_DISTRIBUTION is 'true'. Only then does it attest their provenance,
+#     upload them as short-lived workflow artifacts (any signed-in user can download those
+#     from a public repository), write SHA256SUMS and attach them to the Release. A tag
+#     push never uploads or attaches a binary, whatever the variable says. The variable is
+#     unset today: leave it that way until the licensing review says otherwise;
 #   - publishes the crates (source) to crates.io only when run by hand with
 #     publish_crates = yes.
 # Maintainer procedure: packaging/README.md.
@@ -161,8 +163,9 @@ jobs:
         run: cargo test -p ticoraw --release --locked --test conformance -- --nocapture
 
   build:
-    # Builds and packages compiled decoders. The archives stay workflow artifacts unless
-    # the patent gate in `attach-binaries` is open.
+    # Builds, packages and smoke-tests compiled decoders. The archives are attested and
+    # uploaded only when the patent gate of `attach-binaries` is open (same condition);
+    # otherwise they never leave the runner.
     name: build (${{ matrix.target }})
     needs: verify
     strategy:
@@ -229,16 +232,17 @@ jobs:
           archive=$(scripts/release/package.sh "$VERSION" "$TARGET" "$bin" dist)
           echo "archive=dist/$(basename "$archive")" >>"$GITHUB_OUTPUT"
 
+      # PATENT GATE: the same condition as the attach-binaries job.
       - name: Attest build provenance
-        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_binaries == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ steps.package.outputs.archive }}
 
-      # Uploaded for the gated attach step only when binary distribution is allowed; any
-      # signed-in user can download public workflow artifacts. Builds are still smoke-tested.
+      # Uploaded only for the gated attach step (same condition); any signed-in user can
+      # download public workflow artifacts. Builds are still smoke-tested.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_binaries == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         with:
           name: ticoraw-${{ matrix.target }}
           path: ${{ steps.package.outputs.archive }}
@@ -248,7 +252,8 @@ jobs:
   checksums:
     name: SHA256SUMS
     needs: [verify, build]
-    if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+    # PATENT GATE: the same condition as the attach-binaries job.
+    if: github.event_name == 'workflow_dispatch' && inputs.attach_binaries == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
