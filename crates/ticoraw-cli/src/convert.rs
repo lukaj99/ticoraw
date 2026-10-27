@@ -5,7 +5,7 @@
 //! the main thread prints, from the events the workers send.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 use ticoraw::{NikonCompression, RawCodec};
 use ticoraw_dng::{CarriedMetadata, Compression, Preview};
 
-use crate::CliError;
 use crate::args::{Arg, Args};
 use crate::decode::{same_file, write_output};
 use crate::json::Json;
 use crate::scan::{collect, read_for_scan};
+use crate::{CliError, interrupt, printable, shown};
 
 pub const HELP: &str = "\
 Convert High Efficiency (HE/HE*) NEFs to complete DNGs
@@ -36,19 +36,24 @@ in lossless JPEG tiles, a preview, and the NEF's file name as OriginalRawFileNam
 Each DNG is written next to its NEF, or with --output under that directory; files found in a
 given directory keep their path relative to it there. DNGs are written atomically (a
 temporary file, then a rename) and an existing file is never replaced without --force.
+An interrupted run (Ctrl-C, or a termination signal) removes the temporary files of the
+DNGs it was writing. A run killed outright (kill -9, a crash, a power cut) can leave one
+behind, named .<name>.dng.ticoraw-<pid>.tmp; convert removes those from the folders it
+writes to once they are a day old.
 
 Options:
   -o, --output <dir>  Write the DNGs under <dir>, which is created if needed
   -r, --recursive     Descend into subdirectories (symbolic links to directories are skipped)
   --skip-existing     Skip a NEF whose DNG already exists
   -f, --force         Replace existing DNGs
-  --uncompressed      Store the mosaic uncompressed (about three times larger)
+  --uncompressed      Store the mosaic uncompressed (2 bytes per pixel: about 1.7 to 2.6
+                      times the size of the default DNG)
   --no-preview        Leave out the embedded preview (the thumbnail stays)
   --with-sidecar      Use the sidecar <name>.xmp (any case) next to each NEF, as written by
                       Lightroom, Bridge or Capture One, as the DNG's XMP instead of the
-                      NEF's own packet
-  -j, --jobs <n>      Files converted at once [default: up to 4, at most one per 2 GB of
-                      memory; each file already uses every core]
+                      NEF's own packet (a regular file of at most 16 MB)
+  -j, --jobs <n>      Files converted at once [default: up to 4, and on Linux and macOS at
+                      most one per 2 GB of memory; each file already uses every core]
   --json              Print JSON Lines (one event per file, then a summary) instead of text
   -h, --help          Show this help
 
@@ -291,6 +296,17 @@ impl Skip {
 
 /// Converts one NEF; every expected failure is an `Err` message.
 fn convert_one(job: &Job, o: &Options) -> Result<Done, String> {
+    if same_file(&job.input, &job.output) {
+        return Err(format!("output {} is the input file", job.output.display()));
+    }
+    // Classify before looking at the output: a classic NEF is skipped whether or not a DNG
+    // is already there.
+    let head = read_for_scan(&job.input, false).map_err(|e| format!("reading: {e}"))?;
+    let info =
+        ticoraw::inspect_nef_prefix(&head.bytes, head.file_len).map_err(|e| e.to_string())?;
+    if info.codec == RawCodec::Classic {
+        return Ok(Done::Skipped(Skip::Classic(info.compression)));
+    }
     if job.output.symlink_metadata().is_ok() {
         match o.existing {
             Existing::Skip => return Ok(Done::Skipped(Skip::Exists)),
@@ -302,15 +318,6 @@ fn convert_one(job: &Job, o: &Options) -> Result<Done, String> {
             }
             Existing::Replace => {}
         }
-    }
-    if same_file(&job.input, &job.output) {
-        return Err(format!("output {} is the input file", job.output.display()));
-    }
-    let head = read_for_scan(&job.input, false).map_err(|e| format!("reading: {e}"))?;
-    let info =
-        ticoraw::inspect_nef_prefix(&head.bytes, head.file_len).map_err(|e| e.to_string())?;
-    if info.codec == RawCodec::Classic {
-        return Ok(Done::Skipped(Skip::Classic(info.compression)));
     }
     if let Some(why) = info.codestream.and_then(|c| c.unsupported) {
         return Err(format!(
@@ -364,16 +371,36 @@ fn convert_one(job: &Job, o: &Options) -> Result<Done, String> {
     })
 }
 
-/// Reads a sidecar and checks that it is an XMP packet.
+/// Reads a sidecar and checks that it is an XMP packet. Only a regular file is opened (a
+/// FIFO would block, a device could be endless), and never more than [`MAX_SIDECAR`]
+/// bytes are read, whatever its size was when it was checked.
 fn read_sidecar(path: &Path) -> Result<Vec<u8>, String> {
     let fail = |e: &dyn std::fmt::Display| format!("sidecar {}: {e}", path.display());
-    let len = std::fs::metadata(path).map_err(|e| fail(&e))?.len();
-    if len > MAX_SIDECAR {
-        return Err(fail(&format!(
-            "{len} bytes is too large for an XMP sidecar"
-        )));
+    let too_large = || {
+        fail(&format!(
+            "larger than {MAX_SIDECAR} bytes, too large for XMP"
+        ))
+    };
+    let regular = |m: &std::fs::Metadata| {
+        if !m.is_file() {
+            return Err(fail(&"not a regular file"));
+        }
+        if m.len() > MAX_SIDECAR {
+            return Err(too_large());
+        }
+        Ok(())
+    };
+    regular(&std::fs::metadata(path).map_err(|e| fail(&e))?)?;
+    let file = std::fs::File::open(path).map_err(|e| fail(&e))?;
+    // The path may have been replaced since it was checked: check what was opened.
+    regular(&file.metadata().map_err(|e| fail(&e))?)?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SIDECAR + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| fail(&e))?;
+    if bytes.len() as u64 > MAX_SIDECAR {
+        return Err(too_large());
     }
-    let bytes = std::fs::read(path).map_err(|e| fail(&e))?;
     let has = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
     if !has(b"<x:xmpmeta") && !has(b"<?xpacket") {
         return Err(fail(&"not an XMP packet (no <x:xmpmeta> or <?xpacket>)"));
@@ -416,9 +443,35 @@ fn physical_memory() -> Option<u64> {
     String::from_utf8(out.stdout).ok()?.trim().parse().ok()
 }
 
+/// Unknown elsewhere (Windows included: reading it needs `unsafe` FFI, which this crate
+/// forbids), so only the core cap applies there; `--help` says so.
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn physical_memory() -> Option<u64> {
     None
+}
+
+/// Removes the temporary files that killed runs left in the output folders (each folder is
+/// listed once) and says so on stderr.
+fn remove_stale_temps(jobs: &[Job]) {
+    let dirs: HashSet<&Path> = jobs
+        .iter()
+        .map(|j| j.output.parent().unwrap_or(Path::new("")))
+        .collect();
+    for dir in dirs {
+        let listed = if dir.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            dir
+        };
+        let n = interrupt::remove_stale_temps(listed, interrupt::STALE_AFTER);
+        if n > 0 {
+            eprintln!(
+                "ticoraw: removed {n} temporary file{} left in {} by an interrupted run",
+                if n == 1 { "" } else { "s" },
+                shown(listed)
+            );
+        }
+    }
 }
 
 /// Sent by the workers to the printing main thread.
@@ -428,8 +481,10 @@ enum Event {
 }
 
 pub fn run(o: &Options) -> Result<ExitCode, CliError> {
+    interrupt::install();
     let started = Instant::now();
     let plan = plan(o);
+    remove_stale_temps(&plan.jobs);
     let jobs = o
         .jobs
         .map_or_else(default_jobs, NonZeroUsize::get)
@@ -526,7 +581,7 @@ impl Reporter {
                     self.current = jobs[i]
                         .input
                         .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
+                        .map(|n| shown(Path::new(n)))
                         .unwrap_or_default();
                 }
                 Ok(Event::Finished(i, result, took)) => {
@@ -683,7 +738,7 @@ impl Reporter {
             per_sec(mb(t.bytes_in))
         )?;
         for (p, e) in &t.failures {
-            writeln!(out, "failed: {}: {e}", p.display())?;
+            writeln!(out, "failed: {}: {}", shown(p), printable(e))?;
         }
         Ok(())
     }
@@ -694,11 +749,12 @@ impl Reporter {
         out.flush()
     }
 
-    /// A text line on stdout, above the progress line.
+    /// A text line on stdout, above the progress line. Paths, warnings and errors in it can
+    /// come from files, so control characters are escaped.
     fn text(&mut self, s: &str) -> io::Result<()> {
         self.clear_progress();
         let mut out = self.out.lock();
-        writeln!(out, "{s}")?;
+        writeln!(out, "{}", printable(s))?;
         out.flush()
     }
 
@@ -706,19 +762,20 @@ impl Reporter {
         if !self.progress {
             return;
         }
-        let columns = std::env::var("COLUMNS")
-            .ok()
-            .and_then(|c| c.parse().ok())
-            .unwrap_or(80);
         let line = progress_line(
             &self.t,
             self.total,
             self.started.elapsed(),
             &self.current,
-            columns,
+            terminal_columns(),
         );
+        // Line wrapping is switched off while the line is drawn (DECAWM), so that a line
+        // still too wide (double-width characters) is cut at the edge rather than wrapped
+        // onto a row the next redraw does not clear. One write, so that it is not split.
         // Progress is best effort: a failed write to stderr is ignored.
-        let _ = write!(io::stderr().lock(), "\r\x1b[2K{line}");
+        let _ = io::stderr()
+            .lock()
+            .write_all(format!("\r\x1b[2K\x1b[?7l{line}\x1b[?7h").as_bytes());
     }
 
     fn clear_progress(&self) {
@@ -726,6 +783,22 @@ impl Reporter {
             let _ = write!(io::stderr().lock(), "\r\x1b[2K");
         }
     }
+}
+
+/// The width of the terminal on stderr, asked of the terminal itself (shells do not export
+/// `$COLUMNS`), else `$COLUMNS`, else 80.
+fn terminal_columns() -> usize {
+    #[cfg(any(unix, windows))]
+    if let Some((terminal_size::Width(w), _)) = terminal_size::terminal_size_of(io::stderr()) {
+        if w > 0 {
+            return usize::from(w);
+        }
+    }
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.parse().ok())
+        .filter(|&c| c > 0)
+        .unwrap_or(80)
 }
 
 /// The progress line, cut to fit `columns - 1` characters so that it never wraps.
@@ -857,6 +930,34 @@ mod tests {
         );
         std::fs::write(dir.join("ok.xmp"), b"<x:xmpmeta/>").unwrap();
         assert_eq!(read_sidecar(&dir.join("ok.xmp")).unwrap(), b"<x:xmpmeta/>");
+        let big = std::fs::File::create(dir.join("big.xmp")).unwrap();
+        big.set_len(MAX_SIDECAR + 1).unwrap();
+        let err = read_sidecar(&dir.join("big.xmp")).unwrap_err();
+        assert!(err.contains("too large"), "{err}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A FIFO would block forever and a device could be read without end: neither is read.
+    #[cfg(unix)]
+    #[test]
+    fn sidecars_must_be_regular_files() {
+        let dir = scratch("sidecar-special");
+        let fifo = dir.join("fifo.xmp");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let zero = dir.join("zero.xmp");
+        std::os::unix::fs::symlink("/dev/zero", &zero).unwrap();
+        let link = dir.join("link.xmp");
+        std::fs::write(dir.join("real"), b"<x:xmpmeta/>").unwrap();
+        std::os::unix::fs::symlink(dir.join("real"), &link).unwrap();
+        for special in [&fifo, &zero, &dir.join("sub")] {
+            let err = read_sidecar(special).unwrap_err();
+            assert!(err.contains("not a regular file"), "{err}");
+        }
+        assert_eq!(read_sidecar(&link).unwrap(), b"<x:xmpmeta/>");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -886,6 +987,27 @@ mod tests {
             ))))
         );
         assert!(!dir.join("classic.dng").exists());
+
+        // A classic NEF is skipped as classic even when its DNG exists (say, from another
+        // converter), whatever the policy for existing DNGs.
+        std::fs::write(dir.join("classic.dng"), b"from elsewhere").unwrap();
+        for existing in [Existing::Fail, Existing::Skip, Existing::Replace] {
+            let o = Options {
+                existing,
+                ..options(&[&dir])
+            };
+            assert_eq!(
+                convert_one(job("classic.nef"), &o),
+                Ok(Done::Skipped(Skip::Classic(Some(
+                    NikonCompression::Lossless
+                )))),
+                "{existing:?}"
+            );
+        }
+        assert_eq!(
+            std::fs::read(dir.join("classic.dng")).unwrap(),
+            b"from elsewhere"
+        );
 
         // An existing DNG is kept, skipped or replaced.
         let err = convert_one(job("he.NEF"), &o).unwrap_err();

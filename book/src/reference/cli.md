@@ -57,19 +57,24 @@ in lossless JPEG tiles, a preview, and the NEF's file name as OriginalRawFileNam
 Each DNG is written next to its NEF, or with --output under that directory; files found in a
 given directory keep their path relative to it there. DNGs are written atomically (a
 temporary file, then a rename) and an existing file is never replaced without --force.
+An interrupted run (Ctrl-C, or a termination signal) removes the temporary files of the
+DNGs it was writing. A run killed outright (kill -9, a crash, a power cut) can leave one
+behind, named .<name>.dng.ticoraw-<pid>.tmp; convert removes those from the folders it
+writes to once they are a day old.
 
 Options:
   -o, --output <dir>  Write the DNGs under <dir>, which is created if needed
   -r, --recursive     Descend into subdirectories (symbolic links to directories are skipped)
   --skip-existing     Skip a NEF whose DNG already exists
   -f, --force         Replace existing DNGs
-  --uncompressed      Store the mosaic uncompressed (about three times larger)
+  --uncompressed      Store the mosaic uncompressed (2 bytes per pixel: about 1.7 to 2.6
+                      times the size of the default DNG)
   --no-preview        Leave out the embedded preview (the thumbnail stays)
   --with-sidecar      Use the sidecar <name>.xmp (any case) next to each NEF, as written by
                       Lightroom, Bridge or Capture One, as the DNG's XMP instead of the
-                      NEF's own packet
-  -j, --jobs <n>      Files converted at once [default: up to 4, at most one per 2 GB of
-                      memory; each file already uses every core]
+                      NEF's own packet (a regular file of at most 16 MB)
+  -j, --jobs <n>      Files converted at once [default: up to 4, and on Linux and macOS at
+                      most one per 2 GB of memory; each file already uses every core]
   --json              Print JSON Lines (one event per file, then a summary) instead of text
   -h, --help          Show this help
 
@@ -90,13 +95,16 @@ Decodes the High Efficiency (TicoRAW) raw strip and writes a complete DNG: the C
 lossless JPEG tiles, the camera's EXIF, GPS, XMP and MakerNote, a preview and a thumbnail,
 the colour matrix, as-shot white balance, orientation and default crop, and the input's
 file name as OriginalRawFileName. A PGM is the bare mosaic as big-endian 16-bit samples
-(maxval 16383 for 14-bit data, else 65535). Output is written atomically and never
-overwrites the input. To convert many files, use `ticoraw convert`.
+(maxval 16383 for 14-bit data, else 65535). Output is written atomically (a temporary file
+.<name>.ticoraw-<pid>.tmp next to it, then a rename; an interruption such as Ctrl-C
+removes the temporary file) and never overwrites the input. To convert many files, use
+`ticoraw convert`.
 
 Options:
   -o, --output <path>    Output file [default: the input path with a .dng/.pgm extension]
   --format <dng|pgm>     Output format [default: dng]
-  --uncompressed         Store the DNG's mosaic uncompressed (about three times larger)
+  --uncompressed         Store the DNG's mosaic uncompressed (2 bytes per pixel: about
+                         1.7 to 2.6 times the size of the default DNG)
   --no-preview           Leave out the DNG's embedded preview (the thumbnail stays)
   -f, --force            Overwrite an existing output file
   -h, --help             Show this help

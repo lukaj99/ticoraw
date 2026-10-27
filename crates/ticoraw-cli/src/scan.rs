@@ -10,7 +10,7 @@ use ticoraw::{NikonCompression, RawCodec};
 
 use crate::args::{Arg, Args};
 use crate::inspect::compression_short;
-use crate::{CliError, ms, unexpected};
+use crate::{CliError, ms, printable, shown, unexpected};
 
 pub const HELP: &str = "\
 Classify every NEF in a directory, optionally decoding them all
@@ -58,7 +58,7 @@ pub fn parse(args: &mut Args) -> Result<Option<Options>, String> {
     }))
 }
 
-/// What a file turned out to be.
+/// What a file turned out to be. Its strings come from the file, made [`printable`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Class {
     TicoRaw {
@@ -127,15 +127,18 @@ pub struct ScanInput {
 
 fn classify(input: &ScanInput) -> Class {
     match ticoraw::inspect_nef_prefix(&input.bytes, input.file_len) {
-        Err(e) => Class::Error(e.to_string()),
+        Err(e) => Class::Error(printable(&e.to_string()).into_owned()),
         Ok(i) => match i.codec {
             RawCodec::TicoRaw => Class::TicoRaw {
-                model: i.model,
+                model: printable(&i.model).into_owned(),
                 compression: i.compression,
-                unsupported: i.codestream.and_then(|c| c.unsupported),
+                unsupported: i
+                    .codestream
+                    .and_then(|c| c.unsupported)
+                    .map(|why| printable(&why).into_owned()),
             },
             RawCodec::Classic => Class::Classic {
-                model: i.model,
+                model: printable(&i.model).into_owned(),
                 compression: i.compression,
             },
         },
@@ -167,12 +170,12 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
 
     let mut out = io::stdout().lock();
     for path in &files {
-        let shown = path.strip_prefix(&o.dir).unwrap_or(path).display();
+        let shown = shown(path.strip_prefix(&o.dir).unwrap_or(path));
         tally.files += 1;
         let bytes = match read_for_scan(path, o.decode) {
             Ok(b) => b,
             Err(e) => {
-                let msg = format!("reading: {e}");
+                let msg = printable(&format!("reading: {e}")).into_owned();
                 writeln!(out, "{:<8} {:<8} {:<12} {shown}: {msg}", "error", "-", "-")?;
                 tally.errors.push((path.clone(), msg));
                 continue;
@@ -218,8 +221,9 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
                             write!(out, "  decoded in {}", ms(el))?;
                         }
                         Err(e) => {
+                            let e = printable(&e.to_string()).into_owned();
                             write!(out, "  DECODE FAILED: {e}")?;
-                            tally.decode_failures.push((path.clone(), e.to_string()));
+                            tally.decode_failures.push((path.clone(), e));
                         }
                     }
                 }
@@ -287,7 +291,7 @@ fn write_summary(out: &mut impl Write, t: &Tally, decode: bool, wall: Duration) 
     }
     for (label, list) in [("error", &t.errors), ("decode failure", &t.decode_failures)] {
         for (p, e) in list {
-            writeln!(out, "{label}: {}: {e}", p.display())?;
+            writeln!(out, "{label}: {}: {e}", shown(p))?;
         }
     }
     Ok(())
@@ -355,6 +359,22 @@ mod tests {
             file_len: 10,
         };
         assert!(matches!(classify(&input), Class::Error(_)));
+    }
+
+    #[test]
+    fn file_strings_are_printable() {
+        let mut nef = crate::synthetic::he_nef(1);
+        let model = b"NIKON Z6_3";
+        let at = nef.windows(model.len()).position(|w| w == model).unwrap();
+        nef[at..at + 4].copy_from_slice(b"\x1b[2J");
+        let input = ScanInput {
+            file_len: nef.len(),
+            bytes: nef,
+        };
+        match classify(&input) {
+            Class::TicoRaw { model, .. } => assert_eq!(model, r"\u{1b}[2JN Z6_3"),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

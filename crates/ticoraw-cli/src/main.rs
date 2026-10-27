@@ -8,6 +8,7 @@ mod args;
 mod convert;
 mod decode;
 mod inspect;
+mod interrupt;
 mod json;
 mod report;
 mod scan;
@@ -20,6 +21,7 @@ mod common;
 #[path = "../tests/support/synthetic.rs"]
 mod synthetic;
 
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::Path;
@@ -146,7 +148,7 @@ fn main() -> ExitCode {
     match run(command) {
         Ok(code) => code,
         Err(CliError::Failure(m)) => {
-            eprintln!("ticoraw: error: {m}");
+            eprintln!("ticoraw: error: {}", printable(&m));
             ExitCode::FAILURE
         }
         Err(CliError::Output(e)) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::FAILURE,
@@ -236,6 +238,31 @@ fn read_input(path: &Path) -> Result<Vec<u8>, CliError> {
     std::fs::read(path).map_err(|e| CliError::Failure(format!("reading {}: {e}", path.display())))
 }
 
+/// `s` with every control character (and bidirectional override) escaped as `\u{..}`, so
+/// that text taken from a file (a camera model, a file name) cannot move the cursor, clear
+/// the terminal or forge output lines.
+fn printable(s: &str) -> Cow<'_, str> {
+    let unsafe_char =
+        |c: char| c.is_control() || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+    if !s.chars().any(unsafe_char) {
+        return Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        if unsafe_char(c) {
+            out.extend(c.escape_unicode());
+        } else {
+            out.push(c);
+        }
+    }
+    Cow::Owned(out)
+}
+
+/// A path for text output, through [`printable`].
+fn shown(path: &Path) -> String {
+    printable(&path.to_string_lossy()).into_owned()
+}
+
 /// Formats a duration as milliseconds with one decimal.
 fn ms(d: Duration) -> String {
     format!("{:.1} ms", d.as_secs_f64() * 1e3)
@@ -283,6 +310,17 @@ mod tests {
         assert!(p(&["frobnicate"]).is_err());
         assert!(p(&["--frob"]).is_err());
         assert!(p(&["help", "frob"]).is_err());
+    }
+
+    #[test]
+    fn printable_escapes_control_characters() {
+        assert!(matches!(printable("NIKON Z 6_3"), Cow::Borrowed(_)));
+        assert_eq!(printable("caf\u{e9} \u{4e2d}"), "caf\u{e9} \u{4e2d}");
+        assert_eq!(
+            printable("\x1b[2J\x1b]0;PWN\x07X\nY\u{9b}\u{202e}"),
+            r"\u{1b}[2J\u{1b}]0;PWN\u{7}X\u{a}Y\u{9b}\u{202e}"
+        );
+        assert_eq!(shown(Path::new("a/\x1bb.NEF")), r"a/\u{1b}b.NEF");
     }
 
     #[test]

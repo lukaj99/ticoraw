@@ -9,7 +9,7 @@ use ticoraw::CfaImage;
 use ticoraw::tiff::{self, Tiff};
 
 use crate::args::{Arg, Args};
-use crate::{CliError, cfa_color, ms, read_input, unexpected};
+use crate::{CliError, cfa_color, ms, printable, read_input, shown, unexpected};
 
 pub const HELP: &str = "\
 Compare a decoded NEF sample-for-sample against a reference DNG
@@ -132,10 +132,10 @@ pub fn run(o: &Options) -> Result<ExitCode, CliError> {
     let t_dng = t.elapsed();
 
     let mut out = io::stdout().lock();
-    writeln!(out, "nef        {}", o.nef.display())?;
-    writeln!(out, "reference  {}", o.reference.display())?;
+    writeln!(out, "nef        {}", shown(&o.nef))?;
+    writeln!(out, "reference  {}", shown(&o.reference))?;
     if let Some(name) = original_raw_file_name(&dng) {
-        writeln!(out, "           (OriginalRawFileName {name})")?;
+        writeln!(out, "           (OriginalRawFileName {})", printable(&name))?;
         let ours = o.nef.file_name().map(|n| n.to_string_lossy().into_owned());
         if ours.is_some_and(|n| !n.eq_ignore_ascii_case(&name)) {
             writeln!(

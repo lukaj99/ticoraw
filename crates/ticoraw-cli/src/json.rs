@@ -144,7 +144,9 @@ fn write_string(out: &mut String, s: &str) -> fmt::Result {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if c < ' ' || c == '\u{7f}' => write!(out, "\\u{:04x}", c as u32)?,
+            // All control characters (C0, DEL and C1), so that JSON shown on a terminal
+            // cannot carry escape sequences from a file's strings.
+            c if c.is_control() => write!(out, "\\u{:04x}", c as u32)?,
             c => out.push(c),
         }
     }
@@ -159,8 +161,8 @@ mod tests {
     #[test]
     fn escapes_strings() {
         assert_eq!(
-            Json::str("a\"b\\c\n\u{1}é").to_string(),
-            r#""a\"b\\c\n\u0001é""#
+            Json::str("a\"b\\c\n\u{1}é\u{1b}[2J\u{7f}\u{9b}").to_string(),
+            r#""a\"b\\c\n\u0001é\u001b[2J\u007f\u009b""#
         );
     }
 
