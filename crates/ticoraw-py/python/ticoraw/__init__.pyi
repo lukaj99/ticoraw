@@ -89,8 +89,11 @@ def to_dng(
 ) -> bytes | None:
     """Convert a NEF to a complete DNG.
 
-    Returns the DNG as bytes when ``dest`` is None; otherwise writes it to ``dest``
-    (replacing any existing file) and returns None. ``xmp`` replaces the NEF's XMP packet.
+    Returns the DNG as bytes when ``dest`` is None; otherwise writes it to ``dest`` and
+    returns None. The write is atomic: a temporary file in the same folder is renamed over
+    ``dest`` once complete, so a failure leaves an existing file untouched. ``ValueError`` if
+    ``dest`` is the source NEF (also through a symlink or hard link). ``xmp`` replaces the
+    NEF's XMP packet; an empty ``xmp`` counts as None and keeps it.
     """
 
 class TicoError(Exception):

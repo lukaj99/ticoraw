@@ -27,8 +27,15 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.30.1", features = ["abi3-py39"] }
 # BSD-2-Clause.
 numpy = "0.30.0"
-ticoraw = { path = "../ticoraw" }
-ticoraw-dng = { path = "../ticoraw-dng" }
+# Path dependencies carry a version, like everywhere in the main workspace (cargo-deny
+# rejects wildcard requirements); keep it in step with the version above.
+ticoraw = { path = "../ticoraw", version = "0.1.0" }
+ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0" }
+
+# Unlicense OR MIT. Compares file identity (volume serial number and file index) on Windows,
+# so `to_dng` refuses a dest that is a hard link to the source; Unix uses std's dev/ino.
+[target.'cfg(windows)'.dependencies]
+same-file = "1.0.6"
 
 [lints.rust]
 unsafe_code = "forbid"

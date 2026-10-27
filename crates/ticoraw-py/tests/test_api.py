@@ -1,5 +1,6 @@
 """API and error-path tests that need no camera files."""
 
+import os
 import pathlib
 import random
 import re
@@ -115,3 +116,19 @@ def test_to_dng_failure_writes_nothing(tmp_path):
     with pytest.raises(ticoraw.Container):
         ticoraw.to_dng(EMPTY_TIFF, dest)
     assert not dest.exists()
+
+
+@pytest.mark.parametrize("kind", ["hardlink", "symlink"])
+def test_to_dng_refuses_a_link_to_the_source(tmp_path, kind):
+    src = tmp_path / "src.NEF"
+    content = b"\x00" * 4096
+    src.write_bytes(content)
+    dest = tmp_path / "dest.dng"
+    try:
+        (os.link if kind == "hardlink" else os.symlink)(src, dest)
+    except (OSError, NotImplementedError) as e:
+        pytest.skip(f"cannot create a {kind} here: {e}")
+    # The guard runs before the source is parsed, so a non-NEF source suffices.
+    with pytest.raises(ValueError, match="source NEF"):
+        ticoraw.to_dng(src, dest)
+    assert src.read_bytes() == content

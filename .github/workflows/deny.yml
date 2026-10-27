@@ -1,8 +1,10 @@
 name: Supply chain
 
-# cargo-deny (RustSec advisories, licences, duplicate crates, sources) with deny.toml;
-# THIRD-PARTY-NOTICES.md must match the dependency graph; the release scripts must be
-# lint-clean and pass their tests. Runs on pull requests, on pushes to main and weekly,
+# cargo-deny (RustSec advisories, licences, duplicate crates, sources) with deny.toml, for
+# the main workspace and for crates/ticoraw-py, which has its own Cargo.lock and whose
+# crates (pyo3, numpy, ...) are linked into the wheels; both THIRD-PARTY-NOTICES.md files
+# must match their dependency graphs; the release scripts must be lint-clean and pass
+# their tests. Runs on pull requests, on pushes to main and weekly,
 # so a new advisory against an unchanged Cargo.lock still shows up.
 
 on:
@@ -25,13 +27,16 @@ env:
 
 jobs:
   cargo-deny:
-    name: cargo deny (${{ matrix.checks }})
+    name: cargo deny (${{ matrix.manifest }}, ${{ matrix.checks }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         checks: [advisories, bans licenses sources]
+        # crates/ticoraw-py is its own workspace, so its lockfile is checked separately,
+        # against the same deny.toml (cargo-deny reads ./deny.toml).
+        manifest: [Cargo.toml, crates/ticoraw-py/Cargo.toml]
     # A new advisory should not block an unrelated pull request; the weekly and main
     # runs still fail on it.
     continue-on-error: ${{ github.event_name == 'pull_request' && matrix.checks == 'advisories' }}
@@ -47,13 +52,14 @@ jobs:
           tool: cargo-deny@0.20.2
       - env:
           CHECKS: ${{ matrix.checks }}
+          MANIFEST: ${{ matrix.manifest }}
         run: |
           # $CHECKS is split into separate check names on purpose.
           # shellcheck disable=SC2086
-          cargo deny --locked check $CHECKS
+          cargo deny --manifest-path "$MANIFEST" --locked --config deny.toml check $CHECKS
 
   notices:
-    name: THIRD-PARTY-NOTICES.md is current
+    name: THIRD-PARTY-NOTICES.md files are current
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -67,6 +73,8 @@ jobs:
         with:
           tool: cargo-about@0.9.3
       - run: scripts/release/third_party_notices.sh --check
+      # The notices shipped in the wheels and sdist, from crates/ticoraw-py/Cargo.lock.
+      - run: crates/ticoraw-py/scripts/third_party_notices.sh --check
 
   release-scripts:
     name: release scripts
@@ -79,6 +87,6 @@ jobs:
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: shellcheck,shfmt
-      - run: shellcheck scripts/release/*.sh
-      - run: shfmt -i 2 -d scripts/release/*.sh
+      - run: shellcheck scripts/release/*.sh crates/ticoraw-py/scripts/*.sh
+      - run: shfmt -i 2 -d scripts/release/*.sh crates/ticoraw-py/scripts/*.sh
       - run: scripts/release/test.sh
