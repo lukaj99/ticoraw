@@ -6,6 +6,7 @@ Runs when TICORAW_CONFORMANCE_DIR names a folder filled by conformance/fetch.sh 
 """
 
 import concurrent.futures
+import errno
 import hashlib
 import io
 import os
@@ -27,6 +28,11 @@ try:
     import rawpy
 except ImportError:
     rawpy = None
+
+try:
+    import resource
+except ImportError:  # Windows
+    resource = None
 
 MANIFEST = pathlib.Path(__file__).resolve().parents[3] / "conformance" / "manifest.toml"
 SAMPLE_DIR = os.environ.get("TICORAW_CONFORMANCE_DIR")
@@ -147,3 +153,35 @@ def test_to_dng_refuses_to_overwrite_source(sample, tmp_path):
     with pytest.raises(ValueError, match="source NEF"):
         ticoraw.to_dng(copy, copy)
     assert copy.read_bytes() == path.read_bytes()
+
+
+def test_to_dng_replaces_dest_atomically(sample, tmp_path):
+    _s, path = sample
+    dest = tmp_path / "out.dng"
+    dest.write_bytes(b"old")
+    ticoraw.to_dng(path, dest)
+    good = dest.read_bytes()
+    assert good == ticoraw.to_dng(path)
+    assert [p.name for p in tmp_path.iterdir()] == ["out.dng"]  # no temporary file left
+    if resource is None:
+        return
+    # A write that fails part-way (here: a 1 MB file-size limit; Python ignores SIGXFSZ)
+    # must leave the previous DNG intact and clean up after itself.
+    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (1 << 20, hard))
+    try:
+        with pytest.raises(OSError) as info:
+            ticoraw.to_dng(path, dest, compression="uncompressed")
+    finally:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (soft, hard))
+    assert info.value.errno == errno.EFBIG
+    assert info.value.filename == str(dest)
+    assert dest.read_bytes() == good
+    assert [p.name for p in tmp_path.iterdir()] == ["out.dng"]
+
+
+def test_to_dng_empty_xmp_keeps_the_nef_xmp(sample):
+    _s, path = sample
+    default = ticoraw.to_dng(path)
+    assert ticoraw.to_dng(path, xmp=b"") == default
+    assert ticoraw.to_dng(path, xmp="") == default

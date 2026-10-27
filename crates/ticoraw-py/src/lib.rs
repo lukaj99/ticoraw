@@ -8,7 +8,11 @@
 //! Panics never cross into Python: pyo3 turns any panic at the function boundary into a
 //! `pyo3_runtime.PanicException`, and the core returns every expected failure as a value.
 
+use std::ffi::OsString;
+use std::fs::OpenOptions;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use numpy::ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
@@ -440,17 +444,76 @@ fn xmp_bytes(obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     )))
 }
 
+/// Whether `a` and `b` name the same existing file, by identity rather than by name: device
+/// and inode on Unix, volume serial number and file index on Windows. So symlinks,
+/// case-insensitive aliases and hard links are all caught. Unix reads only metadata, so a
+/// FIFO at `b` is never opened.
 fn same_file(a: &Path, b: &Path) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (std::fs::metadata(a), std::fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
     }
+    #[cfg(windows)]
+    {
+        same_file::is_same_file(a, b).unwrap_or(false)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Writes `bytes` to `dest` atomically: into a new temporary file in the same directory,
+/// flushed to disk, which is then renamed over `dest`. A failure part-way (a full disk, a
+/// file-size limit) leaves any existing `dest` untouched and removes the temporary file.
+/// A symlink or hard link at `dest` is replaced, never written through.
+fn write_atomic(dest: &Path, bytes: &[u8]) -> io::Result<()> {
+    // Unique per call: Python threads can write concurrently with the GIL released.
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let name = dest
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "dest has no file name"))?;
+    for _ in 0..100 {
+        let mut tmp_name = OsString::from(".");
+        tmp_name.push(name);
+        tmp_name.push(format!(
+            ".ticoraw-{}-{}.tmp",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let tmp = dest.with_file_name(tmp_name);
+        let mut file = match OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(f) => f,
+            // A leftover from an earlier process with the same id: try the next name.
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        };
+        let written = file.write_all(bytes).and_then(|()| file.sync_all());
+        drop(file);
+        let result = written.and_then(|()| std::fs::rename(&tmp, dest));
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        return result;
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "no free temporary file name next to dest",
+    ))
 }
 
 /// Converts a Nikon HE/HE* NEF into a complete DNG.
 ///
-/// Returns the DNG as `bytes` when `dest` is `None`; otherwise writes it to `dest`
-/// (replacing any existing file) and returns `None`.
+/// Returns the DNG as `bytes` when `dest` is `None`; otherwise writes it to `dest` atomically
+/// (replacing any existing file only once the new one is complete) and returns `None`. An
+/// empty `xmp` counts as none: the NEF's own XMP packet is kept, as in the C API.
 #[pyfunction]
 #[pyo3(signature = (source, dest=None, *, compression="lossless", preview=true, xmp=None))]
 fn to_dng<'py>(
@@ -469,7 +532,7 @@ fn to_dng<'py>(
         } else {
             Preview::None
         },
-        extra_xmp: xmp.map(xmp_bytes).transpose()?,
+        extra_xmp: xmp.map(xmp_bytes).transpose()?.filter(|x| !x.is_empty()),
         original_raw_file_name: src
             .path()
             .and_then(Path::file_name)
@@ -491,7 +554,7 @@ fn to_dng<'py>(
     match dest {
         None => Ok(Some(PyBytes::new(py, &dng))),
         Some(dest) => {
-            py.detach(|| std::fs::write(&dest, &dng))
+            py.detach(|| write_atomic(&dest, &dng))
                 .map_err(|e| os_error(&e, &dest))?;
             Ok(None)
         }

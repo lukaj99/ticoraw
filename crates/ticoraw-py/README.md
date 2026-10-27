@@ -86,7 +86,7 @@ the same, so code written for rawpy mostly carries over:
 |---|---|
 | `ticoraw.read(source) -> RawImage` | Decode a NEF |
 | `ticoraw.inspect(source) -> dict` | Camera, size, compression mode and codestream facts, without decoding pixels |
-| `ticoraw.to_dng(source, dest=None, *, compression="lossless", preview=True, xmp=None)` | Write a DNG to `dest`, or return it as `bytes` when `dest` is `None`. `compression="uncompressed"` writes one plain 16-bit strip; `preview=False` skips the preview (the thumbnail stays); `xmp` (`str` or `bytes`) replaces the NEF's XMP packet, for example with a sidecar |
+| `ticoraw.to_dng(source, dest=None, *, compression="lossless", preview=True, xmp=None)` | Write a DNG to `dest`, or return it as `bytes` when `dest` is `None`. The write is atomic (a temporary file in the same folder, renamed over `dest` once complete), and a `dest` that is the source NEF, also through a symlink or hard link, raises `ValueError`. `compression="uncompressed"` writes one plain 16-bit strip; `preview=False` skips the preview (the thumbnail stays); `xmp` (`str` or `bytes`) replaces the NEF's XMP packet, for example with a sidecar; an empty `xmp` counts as `None` and keeps the NEF's packet |
 
 `source` is a path (`str` or `os.PathLike`) or the file's contents (`bytes` or `bytearray`).
 The GIL is released while files are read, decoded and written, so threads run in parallel.
