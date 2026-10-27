@@ -29,6 +29,12 @@ details. Tick what applies; it is fine to open a draft and ask for help with any
 
 ### Bit-exactness
 
+- [ ] The **Conformance** workflow (13 public samples against Adobe-verified hashes) is
+      green on this pull request. It runs automatically; if it fails, say what you found.
+- [ ] The **Bench** instruction-count gate is green, or the slowdown is explained below.
+
+For the Adobe ground-truth suite:
+
 - [ ] This change does not touch decoding or DNG output, **or**
 - [ ] I ran the ground-truth suite on the conformance samples and every pair still matches
       (paste the summary below), **or**

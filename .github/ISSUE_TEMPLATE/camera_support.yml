@@ -89,8 +89,8 @@ body:
       options:
         - It works, I'm reporting a body, firmware or mode not yet listed
         - "`inspect` fails"
-        - "`decode` fails"
-        - "`decode` warns that there is no built-in colour profile"
+        - "`convert` or `decode` fails"
+        - "`convert` or `decode` warns that there is no built-in colour profile"
         - The DNG opens but looks wrong
         - I haven't tried ticoraw yet
         - Something else (say below)
@@ -107,10 +107,10 @@ body:
       required: false
 
   - type: textarea
-    id: inspect
+    id: report
     attributes:
-      label: "Output of `ticoraw inspect --json <file>`"
-      description: It contains no pixels and no serial number. **Shorten the `path` field if it shows your name.** (A future `ticoraw report` command will produce a privacy-safe bundle for exactly this purpose.)
+      label: "Output of `ticoraw report <file>`"
+      description: The JSON that `ticoraw report` prints for one file from this camera. It shows the firmware, compression mode and codestream header, and contains nothing personal (no serial numbers, GPS position, dates, file name, path or pixels).
       render: json
     validations:
       required: false

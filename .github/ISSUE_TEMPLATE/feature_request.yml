@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for the idea. Describing the problem you want solved, not only the solution, helps us find the best fit. For open-ended questions, [Discussions](https://github.com/lukaj99/ticoraw/discussions) may be a better place.
 
-        Note that the project ships source code only and does not distribute prebuilt binaries, because of JPEG XS patent considerations (see the patent notice in the [README](https://github.com/lukaj99/ticoraw#patent-notice)).
+        Prebuilt binaries, PyPI and npm packages and a hosted web converter are already planned. They are on hold pending a patent-licensing review (see the patent notice in the [README](https://github.com/lukaj99/ticoraw#patent-notice)), so there is no need to request them.
 
   - type: textarea
     id: problem

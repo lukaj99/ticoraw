@@ -16,7 +16,7 @@ body:
     attributes:
       label: What happened?
       description: Describe the problem, and what you expected to happen instead.
-      placeholder: "`ticoraw decode` fails with \"...\" on every file from my camera, but I expected a DNG."
+      placeholder: "`ticoraw convert` fails with \"...\" on every file from my camera, but I expected DNGs."
     validations:
       required: true
 
@@ -26,8 +26,8 @@ body:
       label: Steps to reproduce
       description: The exact command you ran (or the library call), and its full output, including any error message.
       placeholder: |
-        $ ticoraw decode DSC_0001.NEF
-        error: ...
+        $ ticoraw convert --recursive /Volumes/NIKON/DCIM -o ~/Pictures/DNG
+        FAILED     /Volumes/NIKON/DCIM/100NCZ_6/DSC_0001.NEF: ...
       render: shell
     validations:
       required: true
@@ -42,13 +42,13 @@ body:
       required: true
 
   - type: textarea
-    id: inspect
+    id: report
     attributes:
-      label: "Output of `ticoraw inspect --json <file>`"
+      label: "Output of `ticoraw report <file>`"
       description: |
-        For a problem with a specific file, run `ticoraw inspect --json` on it and paste the result. It contains no pixels and no serial number. **Shorten the `path` field if it shows your name.** If `inspect` itself fails, paste its error instead.
+        For a problem with a specific file, run `ticoraw report` on it and paste the JSON it prints. It describes the camera, the compression mode, the codestream header and what happened when decoding. It contains nothing personal: no serial numbers, GPS position, owner, dates, file name, path or pixels.
 
-        (A future `ticoraw report` command will collect all of this, privacy-safe, in one step. Until it exists, `inspect --json` is the best substitute.)
+        If `report` itself fails, paste its error instead. If your copy has no `report` command yet, please update it (see SUPPORT.md), or paste the output of `ticoraw inspect --json <file>` and shorten its `path` field.
       render: json
     validations:
       required: false
@@ -82,7 +82,10 @@ body:
       options:
         - "cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli"
         - "From a clone (cargo install --path crates/ticoraw-cli, or cargo run)"
-        - As a library dependency in my own project
+        - As a Rust library dependency in my own project
+        - Python package built from source (pip install ./crates/ticoraw-py)
+        - JavaScript / WebAssembly package built from source (crates/ticoraw-wasm)
+        - C library built from source (ticoraw-capi)
         - Other (say below)
     validations:
       required: true

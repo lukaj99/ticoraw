@@ -1,56 +1,103 @@
 # ticoraw design
 
-Date: 2026-10-27. Status: implemented; the decoder is bit-exact against Adobe for Nikon
-Z6III HE\* files (15 reference DNGs of 11 distinct NEFs), and decodes the public HE/HE\*
-samples of every other body cleanly ([compat.md](../../compat.md)). The format itself is
-specified in [FORMAT.md](../../FORMAT.md); this note records how the code is organised and
-why, and where the original plan was wrong.
+Date: 2026-10-27, updated for the DNG writer, the CLI's `convert` and `report` commands
+and the C, Python and WebAssembly bindings. Status: implemented; the decoder is bit-exact
+against Adobe DNG Converter 18.7 on the public HE/HE\* samples of every body that records
+them, and against Adobe Lightroom on a further 11 Z6III HE\* files
+([compat.md](../../compat.md)). The format itself is specified in
+[FORMAT.md](../../FORMAT.md); this note records how the code is organised and why, and
+where the original plan was wrong.
 
 ## Goals
 
 - Decode Nikon HE/HE\* NEF raw strips to exactly the CFA values Adobe produces.
+- Write complete DNGs that can replace Adobe's: lossless, with the camera's metadata and
+  previews, and with Adobe's rendering metadata.
 - A library that embeds anywhere: pure functions over byte slices, no I/O, no `unsafe`,
   optional parallelism, builds for `wasm32-unknown-unknown`.
-- A CLI for inspection, conversion to DNG, verification against a reference DNG and bulk
-  scanning.
+- A CLI for batch conversion, inspection, verification against a reference DNG, bulk
+  scanning and privacy-safe bug reports.
+- Thin bindings for C, Python and JavaScript that all inherit the same bit-exact core.
 - Clean-room: behaviour learned from public descriptions and confirmed against Adobe
   output, no code copied from LGPL decoders.
 
-Non-goals: classic NEF compressions, demosaicing, colour rendering, an encoder for real use.
+Non-goals: classic NEF compressions, demosaicing, colour rendering (beyond a binned preview
+for HLG frames), an encoder for real use.
 
 ## Architecture: functional core, imperative shell
 
 ```
-             imperative shell                         functional core (crates/ticoraw)
- ┌──────────────────────────────┐       ┌──────────────────────────────────────────────┐
- │ ticoraw-cli                  │ &[u8] │ container ── tiff          (NEF → strip)      │
- │  read files, walk dirs,      │──────▶│ header                     (markers, PIH, ... │
- │  parse flags, write DNG/PGM, │       │ entropy ── bitstream       (slices → coeffs)  │
- │  print text/JSON, exit codes │◀──────│ wavelet                    (5/3 IDWT)         │
- │                              │ value │ mct                        (Star-Tetrix, RGGB)│
- └──────────────────────────────┘       │ dng                        (DNG read/write)   │
-                                        └──────────────────────────────────────────────┘
+ imperative shells (own all I/O)        I/O-free libraries
+ ┌───────────────────────────┐
+ │ ticoraw-cli               │──┐
+ │  files, dirs, flags,      │  │     ┌──────────────────────────────────────┐
+ │  atomic writes, JSON      │  ├────▶│ ticoraw-dng  (complete DNG writer)   │
+ ├───────────────────────────┤  │     │  metadata · ljpeg · render · tiff_out│
+ │ ticoraw-capi   (C ABI)    │──┤     └──────────────────┬───────────────────┘
+ │ ticoraw-py     (Python)   │──┤                        │ DecodedRaw, NefMetadata
+ │ ticoraw-wasm   (JS/wasm)  │──┘                        ▼
+ └───────────────────────────┘        ┌──────────────────────────────────────┐
+              &[u8] in, values out ──▶│ ticoraw  (decoder, functional core)  │
+                                      │  container ── tiff   (NEF → strip)   │
+                                      │  header              (markers, PIH)  │
+                                      │  entropy ── bitstream (→ coeffs)     │
+                                      │  wavelet             (5/3 IDWT)      │
+                                      │  mct                 (Star-Tetrix)   │
+                                      │  dng                 (DNG read, min. │
+                                      │                       write)         │
+                                      └──────────────────────────────────────┘
 ```
 
-The library never opens a file, reads the clock or spawns a process. Parallelism is the
-only effect it controls, and it is invisible in the results: the `parallel` feature swaps
-three small helpers in `lib.rs` (`par_map_owned`, `par_chunks_mut`,
-`par_chunks_mut_collect`) between rayon and their sequential equivalents, and the output
-is identical either way.
+The two libraries never open a file, read the clock or spawn a process. Parallelism is
+the only effect they control, and it is invisible in the results: in `ticoraw`, the
+`parallel` feature swaps three small helpers in `lib.rs` (`par_map_owned`,
+`par_chunks_mut`, `par_chunks_mut_collect`) between rayon and their sequential
+equivalents, and `ticoraw-dng` encodes tiles in parallel the same way. The output is
+identical either way. Each binding is a thin adapter: it converts its language's inputs to
+byte slices, calls the libraries and maps `TicoError` and `ticoraw_dng::Error` to its own
+error values, so there is one bit-exact implementation, tested once.
+
+### Crate map
+
+| Crate | Role | Depends on |
+|---|---|---|
+| `crates/ticoraw` | Decoder: NEF container, codestream, inverse transforms, colour profiles; a minimal uncompressed DNG writer and a DNG reader for ground truth | rayon (optional) |
+| `crates/ticoraw-dng` | Complete DNG writer: `convert(&nef, &Options)` and `write(&DecodedRaw, &CarriedMetadata, &Options)` | `ticoraw`, jpeg-encoder, rayon (optional) |
+| `crates/ticoraw-cli` | The `ticoraw` binary: `convert`, `decode`, `inspect`, `verify`, `scan`, `report` | `ticoraw`, `ticoraw-dng` |
+| `crates/ticoraw-capi` | Stable C ABI with a cbindgen header; `unsafe` confined to `src/ffi.rs`, panics caught at the boundary | `ticoraw`, `ticoraw-dng` |
+| `crates/ticoraw-py` | Python package `ticoraw` (pyo3, abi3); its own Cargo workspace | `ticoraw`, `ticoraw-dng` |
+| `crates/ticoraw-wasm` | wasm-bindgen package `ticoraw` for browsers and Node.js, plus a Web Worker pool in `js/` | `ticoraw`, `ticoraw-dng` (single-threaded) |
+| `fuzz` | cargo-fuzz targets; its own Cargo workspace | `ticoraw` |
+
+`ticoraw-dng` is a separate crate so that the decoder keeps no dependencies without
+`parallel`, and so that DNG layout decisions (previews, compression, carried metadata) can
+change without touching the bit-exact core.
+
+#### `ticoraw-dng` modules
+
+| Module | Role |
+|---|---|
+| `lib` | `Options`, `convert`, `write`: IFD0 (thumbnail, global and colour tags, XMP, `DNGPrivateData`), SubIFD 0 (CFA) and SubIFD 1 (preview) |
+| `metadata` | `CarriedMetadata::from_nef`: EXIF, GPS and Interoperability IFDs as raw fields, the XMP packet, the MakerNote and the embedded JPEG preview to carry |
+| `ljpeg` | Lossless JPEG (SOF3) tile encoder: two interleaved components, predictor 1, per-tile Huffman tables |
+| `render` | Preview rendering without demosaicing (2x2 binning, white balance, inverse colour matrix, `BaselineExposure`, sRGB) for HLG frames and the thumbnail |
+| `tiff_out` | A small classic-TIFF writer that lays out linked IFDs and data chunks in one pass |
+
+### Module map (`ticoraw`)
 
 ### Module map
 
 | Module | Role |
 |---|---|
 | `tiff` | Minimal TIFF/IFD reader over a byte slice, either byte order, with a base offset for embedded TIFFs |
-| `container` | `parse_nef` / `parse_nef_prefix`: finds the full-resolution CFA IFD, borrows the raw strip (or the part of it a file prefix holds), classifies it (`RawCodec::TicoRaw` vs `Classic`) and reads IFD0's orientation and the MakerNote fields needed (black levels, WB, crop area, compression code) |
+| `container` | `parse_nef` / `parse_nef_prefix`: finds the full-resolution CFA IFD, borrows the raw strip (or the part of it a file prefix holds), classifies it (`RawCodec::TicoRaw` vs `Classic`) and reads IFD0's orientation and the MakerNote fields needed (black levels, WB, crop area, compression code, HLG tone mode); `parse_metadata` returns the byte ranges of the EXIF and GPS IFDs, XMP, MakerNote and embedded JPEG previews for `ticoraw-dng` |
 | `header` | JPEG XS main header to `MainHeader` (CAP, PIH incl. vendor bytes, CDT, WGT, others kept verbatim); `TransferCurve` from the PIH vendor bytes |
 | `bitstream` | MSB-first `BitReader`: fixed-width reads, unary codes, alignment, skips, all bounds-checked |
 | `entropy` | `Layout::new`: validates the supported profile and builds bands, packets and the WGT mapping once; `decode_slice`: precinct headers, GTLIs, packets, sub-packets, dequantisation, coefficient placement |
 | `wavelet` | `synthesize_1d`, `synthesize_row` (horizontal cascade), `synthesize_columns` (frame-wide vertical) |
 | `mct` | `inverse_star_tetrix` (four lifting steps), `assemble_rggb` (interleave through the curve) |
 | `dng` | `decode_dng_cfa` (lossless JPEG SOF3 or uncompressed CFA from a DNG, for ground truth) and `decode_lossless_jpeg` (one SOF3 stream to a `LosslessJpeg` with its dimensions); `encode_uncompressed_dng`, fallible, writing `Orientation`, `DefaultCropOrigin` / `DefaultCropSize`, `BaselineExposure` and Adobe's `UniqueCameraModel` name |
-| `lib` | Public entry points `inspect_nef`, `inspect_nef_prefix`, `decode_nef`, `decode_ticoraw`; `NikonCompression::{from_code, code}`; slice framing; per-model colour profile, Adobe camera name and baseline exposure for the Z6III, Z8, Z9, Zf, Z5II, Z50II and ZR, all matching Adobe DNG Converter 18.7 |
+| `lib` | Public entry points `inspect_nef`, `inspect_nef_prefix`, `decode_nef`, `decode_ticoraw`, `unique_camera_model`; `NikonCompression::{from_code, code}`; slice framing; per-model colour profile, Adobe camera name and baseline exposure for the Z6III, Z8, Z9, Zf, Z5II, Z50II and ZR, all matching Adobe DNG Converter 18.7 |
 | `error` | `TicoError` |
 
 ### API stability
@@ -71,12 +118,24 @@ NEF bytes
                  └─ entropy::decode_slice  ×64, in parallel ─▶ 4 coefficient planes (i32, << Fq)
                       └─ wavelet::synthesize_row / synthesize_columns  (components 0, 1, 3)
                            └─ mct::inverse_star_tetrix ─▶ mct::assemble_rggb(curve)
-                                └─ CfaImage (6064 × 4040 u16) ─▶ DecodedRaw ─▶ dng::encode_uncompressed_dng
+                                └─ CfaImage (6064 × 4040 u16) ─▶ DecodedRaw
+
+ticoraw_dng::convert(NEF bytes, Options)
+  ├─ ticoraw::decode_nef ─▶ DecodedRaw (mosaic, levels, colour, orientation, crop, baseline exposure)
+  ├─ CarriedMetadata::from_nef ─▶ EXIF/GPS/Interop fields, XMP, MakerNote, camera JPEG (copied, never re-encoded)
+  └─ write ─▶ IFD0: thumbnail (render), global and colour tags, XMP, DNGPrivateData(MakerNote)
+              SubIFD 0: CFA as 256×256 lossless JPEG tiles (ljpeg, tiles in parallel) or one strip
+              SubIFD 1: camera JPEG (SDR) or binned rendering (HLG)
+              ─▶ tiff_out ─▶ DNG bytes ─▶ the shell writes them atomically
 ```
 
 Slices are framed from the precinct length fields before any entropy decoding, so each
 slice gets its own disjoint input range and its own disjoint rows of the four planes. The
 only cross-slice dependency, the vertical wavelet, runs afterwards over whole planes.
+
+The DNG is written in the NEF's byte order, so carried EXIF and GPS fields are copied
+verbatim; only their offsets are rewritten. Every DNG `ticoraw-dng` writes decodes back,
+through `ticoraw::dng::decode_dng_cfa`, to exactly the mosaic `decode_nef` returned.
 
 ## Error handling
 
@@ -109,11 +168,40 @@ panics.
 `ticoraw-cli` owns all I/O. Output files are written atomically: to a temporary file in
 the output's directory, then renamed into place (`--force`) or hard-linked only if the
 target does not exist, so a failed write never leaves a partial file or destroys an old
-one. `decode` refuses to overwrite its own input, comparing canonical paths and, on Unix,
-device and inode numbers (which catches hard links), and warns on stderr when the model
-has no built-in colour profile. `scan` accepts `.nef` and `.nrw` in any case, refuses
-non-regular files, and without `--decode` reads only a prefix of each file, grown as far
-as `inspect_nef_prefix` needs to reach the codestream header.
+one. `decode` and `convert` refuse to overwrite their input, comparing canonical paths
+and, on Unix, device and inode numbers (which catches hard links), and warn when the model
+has no built-in colour profile. `scan` accepts `.nef` and `.nrw` in any case,
+refuses non-regular files, and without `--decode` reads only a prefix of each file, grown
+as far as `inspect_nef_prefix` needs to reach the codestream header.
+
+`convert` plans every job first (inputs, mirrored output paths, collisions, existing
+files), then runs a small pool of worker threads, each reading, converting and writing one
+file at a time and catching panics per file. Each file already decodes on every core, so
+the default pool is small: up to 4 files, at most one per 2 GB of memory. Events go to one
+reporter, which prints text with a progress line on a terminal, or JSON Lines with
+`--json`.
+
+`report` builds its JSON from an allow-list of fields (version, platform, make, model,
+firmware, compression mode, dimensions, codestream header segments, decode outcome), so
+serial numbers, GPS, owner, dates, file names, paths and pixels cannot leak; tests check
+this on a synthetic NEF that carries all of them.
+
+## Bindings
+
+Each binding maps the same two libraries into its language and adds no decoding logic:
+
+- **C** (`ticoraw-capi`): opaque `TrRaw` and `TrBuffer` handles, `TrStatus` codes that
+  mirror the error variants, a `struct_size`-versioned options struct, thread-local error
+  messages, and `catch_unwind` on every exported function.
+- **Python** (`ticoraw-py`): `read`, `inspect` and `to_dng`; the mosaic is a zero-copy
+  numpy array, names follow rawpy, the GIL is released during I/O and decoding, and each
+  error variant is an exception class.
+- **JavaScript** (`ticoraw-wasm`): synchronous `toDng`, `decode`, `inspect`,
+  `inspectPrefix` and `decodeDng`, built single-threaded; parallelism comes from a pool of
+  module Web Workers (`js/worker.js`), which needs no `SharedArrayBuffer`.
+
+Compiled builds of the bindings and the CLI are built and tested in CI but not published,
+pending a patent-licensing review (see the README's patent notice).
 
 ## Testing strategy
 
@@ -136,6 +224,19 @@ as `inspect_nef_prefix` needs to reach the codestream header.
    from Topaz Photo AI with an identical CFA image), all bit-exact. Without the variable
    the suite is skipped, so CI and contributors without camera files still pass. The
    folder is only read.
+5. **Conformance, in CI.** `conformance/manifest.toml` pins 13 public CC0 samples and the
+   Adobe-verified SHA-256 of each decoded mosaic, with the expected DNG metadata.
+   `tests/conformance.rs` checks every decode against it when `TICORAW_CONFORMANCE_DIR`
+   names a folder filled by `conformance/fetch.sh`; the Conformance workflow runs it on
+   every pull request and fetches the samples afresh weekly. The Python and WebAssembly
+   bindings check the same hashes.
+6. **Fuzzing.** Nine cargo-fuzz targets (byte-level parsers and structure-aware round
+   trips through the synthetic encoders) run nightly; every minimised crash is kept under
+   `fuzz/artifacts-regressions` and replayed by the robustness tests.
+7. **Performance.** Criterion benchmarks time the full decode and each stage on a
+   synthetic camera-like frame. A Callgrind instruction-count gate compares each pull
+   request with its base on the same runner and fails above 5% more instructions, since
+   wall-clock times on shared runners are too noisy to gate on.
 
 ## Corrections to the original plan
 

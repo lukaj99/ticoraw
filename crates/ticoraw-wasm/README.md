@@ -63,7 +63,7 @@ no crop, black subtraction or scaling. `cfaPattern` is a string such as `"RGGB"`
 | Key | Default | Meaning |
 |---|---|---|
 | `compression` | `"lossless-jpeg"` | `"uncompressed"` writes one 16-bit strip, 2 bytes per photosite |
-| `preview` | `"auto"` | `"none"` skips the full-size preview; the thumbnail is always written |
+| `preview` | `"auto"` | `"none"` skips the preview; the thumbnail is always written |
 | `carryXmp` | `true` | copy the NEF's XMP packet |
 | `extraXmp` | none | an XMP packet (`Uint8Array` or string) that replaces the NEF's |
 | `originalRawFileName` | none | written as `OriginalRawFileName`, usually the NEF's file name |
