@@ -1,0 +1,98 @@
+name: C API
+
+# Builds the C ABI crate (crates/ticoraw-capi) on Linux, macOS and Windows, checks that the
+# committed include/ticoraw.h matches what cbindgen generates, and runs the Rust and C tests
+# (the C test also under AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer).
+#
+# Patent gate: compiled decoders are NOT published, pending patent-licensing review (see the
+# patent notice in README.md). This workflow builds and tests them and keeps the libraries
+# as short-lived workflow artifacts only. It has no release, publish or deploy step. Any such
+# step added later must be guarded by BOTH a manual `workflow_dispatch` input and the
+# repository variable, for example:
+#
+#   if: github.event_name == 'workflow_dispatch' && inputs.distribute &&
+#       vars.ALLOW_BINARY_DISTRIBUTION == 'true'
+#
+# ALLOW_BINARY_DISTRIBUTION is unset today.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  header:
+    name: header is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Keep in step with CBINDGEN_VERSION in crates/ticoraw-capi/scripts/gen-header.sh.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cbindgen@0.29.4
+      - run: crates/ticoraw-capi/scripts/gen-header.sh --check
+
+  test:
+    name: C test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust tests of the extern functions
+        run: cargo test -p ticoraw-capi --release
+      - name: Build the static and dynamic libraries
+        run: cargo build -p ticoraw-capi --release --lib
+      - name: C test and convert example against the static library
+        env:
+          # clang ships with the Windows runner; Linux and macOS use the default cc.
+          CC: ${{ runner.os == 'Windows' && 'clang' || 'cc' }}
+        run: crates/ticoraw-capi/scripts/c-test.sh
+      # Workflow artifact only (7 days), never a release asset; see the patent gate above.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticoraw-capi-${{ runner.os }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            crates/ticoraw-capi/include/ticoraw.h
+            target/release/libticoraw_capi.a
+            target/release/libticoraw_capi.so
+            target/release/libticoraw_capi.dylib
+            target/release/ticoraw_capi.lib
+            target/release/ticoraw_capi.dll
+            target/release/ticoraw_capi.dll.lib
+
+  sanitizers:
+    name: C test (ASan + UBSan + LSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: C test under sanitizers
+        env:
+          CC: clang
+          SANITIZE: address
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: crates/ticoraw-capi/scripts/c-test.sh

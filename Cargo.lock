@@ -469,6 +469,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ticoraw-capi"
+version = "0.1.0"
+dependencies = [
+ "ticoraw",
+ "ticoraw-dng",
+]
+
+[[package]]
 name = "ticoraw-cli"
 version = "0.1.0"
 dependencies = [

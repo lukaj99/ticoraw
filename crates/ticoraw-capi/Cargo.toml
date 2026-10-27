@@ -1,0 +1,52 @@
+[package]
+name = "ticoraw-capi"
+description = "Stable C ABI for the ticoraw Nikon HE/HE* NEF decoder and DNG writer"
+keywords = ["nikon", "nef", "raw", "dng", "ffi"]
+categories = ["multimedia::images", "external-ffi-bindings"]
+readme = "README.md"
+include = ["src/**", "include/**", "cbindgen.toml", "Cargo.toml", "LICENSE-*", "README.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "ticoraw_capi"
+# cdylib and staticlib for C callers; rlib so the Rust tests can call the extern functions.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["parallel"]
+# Decode and encode on all cores (enables the same feature of ticoraw and ticoraw-dng).
+parallel = ["ticoraw/parallel", "ticoraw-dng/parallel"]
+
+[dependencies]
+ticoraw = { path = "../ticoraw", version = "0.1.0", default-features = false }
+ticoraw-dng = { path = "../ticoraw-dng", version = "0.1.0", default-features = false }
+
+# The workspace lints, except that `unsafe_code` is `deny` rather than `forbid`: the C ABI
+# needs `unsafe`, and it is allowed in exactly one module (`src/ffi.rs`).
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+cast_precision_loss = "allow"
+too_many_lines = "allow"
+needless_range_loop = "allow"
+single_match_else = "allow"
+# Every `unsafe` block carries a `// SAFETY:` comment, and CI enforces it.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"

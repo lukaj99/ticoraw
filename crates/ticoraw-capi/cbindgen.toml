@@ -1,0 +1,38 @@
+# cbindgen configuration for include/ticoraw.h. Regenerate with scripts/gen-header.sh,
+# which pins the cbindgen version CI uses; never edit the header by hand.
+language = "C"
+include_guard = "TICORAW_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+style = "both"
+sys_includes = ["stddef.h", "stdint.h"]
+no_includes = true
+header = """
+/*
+ * ticoraw C API: decode Nikon High Efficiency (HE / HE*) NEF raw files and convert them
+ * to DNG. https://github.com/lukaj99/ticoraw
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ *
+ * Generated from crates/ticoraw-capi by cbindgen (scripts/gen-header.sh). Do not edit.
+ *
+ * Every fallible function returns a TrStatus; TR_STATUS_OK (0) is success, and
+ * tr_last_error_message() describes any other value. Handles are released only with
+ * their tr_*_free function; freeing NULL is a no-op.
+ */"""
+
+[parse]
+parse_deps = false
+
+[export]
+# Constants named only in field documentation, so not reachable from a function.
+include = ["TrCompression", "TrPreview"]
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = true
+
+[fn]
+sort_by = "None"
