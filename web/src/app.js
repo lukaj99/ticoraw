@@ -26,7 +26,7 @@ import {
   summary,
   uniqueName,
 } from "./core.js";
-import { canSaveToFolder, existsIn, fromDrop, fromInput, saveInto } from "./files.js";
+import { canSaveToFolder, existsIn, fromDrop, fromInput, removeLeftovers, saveInto } from "./files.js";
 import { crc32, safeEntryName, zipParts } from "./zip.js";
 
 const $ = (id) => document.getElementById(id);
@@ -260,6 +260,8 @@ async function convert() {
     }
   };
   await Promise.all(Array.from({ length: workerCount }, lane));
+  // A save that failed part-way may not have been able to remove its temporary file yet.
+  if (out) await removeLeftovers();
   running = false;
   if (folderDenied) {
     // Ask for a folder again next time.

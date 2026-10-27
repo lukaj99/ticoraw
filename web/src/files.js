@@ -116,6 +116,8 @@ export async function saveInto(root, path, blob) {
   if (await exists(dir, name)) return "exists";
   if (!moveFails && typeof globalThis.FileSystemFileHandle?.prototype.move === "function") {
     const temp = `${name}.partial`;
+    const entry = { dir, name: temp };
+    temporaries.add(entry);
     const handle = await write(dir, temp, blob);
     try {
       // Another program may have created the file meanwhile; move() would replace it.
@@ -124,6 +126,7 @@ export async function saveInto(root, path, blob) {
         return "exists";
       }
       await handle.move(name);
+      temporaries.delete(entry);
       return "written";
     } catch (e) {
       await remove(dir, temp);
@@ -154,8 +157,33 @@ async function write(dir, name, blob) {
   return handle;
 }
 
+/** Temporary files this page created and has not yet removed or renamed. */
+const temporaries = new Set();
+
+/**
+ * Removes `name` from `dir`. Chromium can refuse while an aborted writable still holds its
+ * lock, so a refusal is retried briefly; whatever still fails is left to
+ * `removeLeftovers()`, which the page calls when a run ends.
+ */
 async function remove(dir, name) {
-  await dir.removeEntry(name).catch(() => {});
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await dir.removeEntry(name);
+      temporaries.forEach((t) => t.dir === dir && t.name === name && temporaries.delete(t));
+      return true;
+    } catch (e) {
+      if (e?.name === "NotFoundError") return true;
+      await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+    }
+  }
+  return false;
+}
+
+/** Removes every temporary file a failed or stopped save left behind (best effort). */
+export async function removeLeftovers() {
+  for (const t of [...temporaries]) {
+    if (await remove(t.dir, t.name)) temporaries.delete(t);
+  }
 }
 
 async function exists(dir, name) {

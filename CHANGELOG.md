@@ -98,6 +98,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Web converter, folder mode: when the browser stops allowing writes mid-run, temporary
+  `.partial` files are retried and swept when the run ends instead of being left behind.
 - The conformance test reads `manifest.toml` correctly from a checkout with CRLF line
   endings (Windows), and `.gitattributes` now keeps text files LF everywhere.
 - `ticoraw convert` reports a classic NEF next to an existing DNG as skipped (classic),
