@@ -1,0 +1,150 @@
+name: Docs website
+
+# Builds the documentation website (book/, mdBook) and deploys it to GitHub Pages.
+#
+# - Every run checks that book/src/reference/cli.md matches the CLI's --help output
+#   (scripts/docs/cli-help.sh --check), builds the book and checks every link in it
+#   (scripts/docs/check_links.py). Pull requests stop there.
+# - Pushes to main and manual runs on main also deploy the site. The documentation itself
+#   is source text, so it is always deployed.
+#
+# PATENT GATE: the web converter (web/, a compiled decoder in WebAssembly) is NOT deployed,
+# pending patent-licensing review (JPEG XS is licensed per decoder copy through a patent
+# pool). Its steps run only when the repository variable ALLOW_BINARY_DISTRIBUTION is
+# 'true' (unset today), never on pull requests, and the build step re-checks the variable
+# before it runs. Do not loosen this until that review is done.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "book/**"
+      - "docs/**"
+      - "conformance/README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SUPPORT.md"
+      - "crates/ticoraw-cli/src/**"
+      - "crates/*/README.md"
+      - "crates/ticoraw-capi/examples/convert.c"
+      - "scripts/docs/**"
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "book/**"
+      - "docs/**"
+      - "conformance/README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SUPPORT.md"
+      - "crates/ticoraw-cli/src/**"
+      - "crates/*/README.md"
+      - "crates/ticoraw-capi/examples/convert.c"
+      - "scripts/docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; a newer push waits rather than cancelling one in progress.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  MDBOOK_VERSION: "0.5.4"
+  # SHA-256 of mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz from the mdBook release.
+  MDBOOK_SHA256: 3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+
+      - name: Install mdBook ${{ env.MDBOOK_VERSION }}
+        run: |
+          set -eu
+          url="https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/mdbook.tar.gz" "$url"
+          echo "$MDBOOK_SHA256  $RUNNER_TEMP/mdbook.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/mdbook.tar.gz" -C "$RUNNER_TEMP/bin" mdbook
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/mdbook" --version
+
+      - name: Check that the CLI reference is up to date
+        run: sh scripts/docs/cli-help.sh --check
+
+      - name: Build the book
+        run: mdbook build book
+
+      - name: Check links
+        run: python3 scripts/docs/check_links.py book/book
+
+      # PATENT GATE (see the top of this file): the web converter is a compiled decoder.
+      - name: Set up the web converter toolchain (gated)
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.event_name != 'pull_request'
+        run: rustup target add wasm32-unknown-unknown
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.event_name != 'pull_request'
+        with:
+          tool: wasm-pack@0.15.0
+      - uses: actions/setup-node@v4
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.event_name != 'pull_request'
+        with:
+          node-version: 22
+      - name: Build the web converter into /convert/ (gated)
+        if: vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.event_name != 'pull_request'
+        env:
+          ALLOW_BINARY_DISTRIBUTION: ${{ vars.ALLOW_BINARY_DISTRIBUTION }}
+        run: |
+          set -eu
+          if [ "$ALLOW_BINARY_DISTRIBUTION" != true ]; then
+            echo "Binary distribution is not allowed (pending patent-licensing review)." >&2
+            exit 1
+          fi
+          if [ ! -f web/build.sh ]; then
+            echo "::notice title=Web converter skipped::web/build.sh does not exist on this branch, so the site is deployed without /convert/."
+            exit 0
+          fi
+          sh web/build.sh
+          if [ ! -f web/dist/index.html ]; then
+            echo "web/build.sh did not produce web/dist/index.html" >&2
+            exit 1
+          fi
+          mkdir -p book/book/convert
+          cp -R web/dist/. book/book/convert/
+          echo "Web converter added at /convert/."
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: book/book
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
