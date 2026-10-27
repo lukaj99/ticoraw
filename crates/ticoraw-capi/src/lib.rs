@@ -113,7 +113,7 @@ impl From<&ticoraw_dng::Error> for TrStatus {
 pub enum TrCompression {
     /// Lossless JPEG in 256x256 tiles, about the size of Adobe's DNGs (the default).
     LosslessJpeg = 0,
-    /// One uncompressed 16-bit strip: about three times larger, simplest to read.
+    /// One uncompressed 16-bit strip: about 1.7 to 2.6 times larger, simplest to read.
     Uncompressed = 1,
 }
 
@@ -124,7 +124,7 @@ pub enum TrPreview {
     /// The camera's embedded JPEG when there is a usable one, otherwise a half-size
     /// rendering of the raw data (the default).
     Auto = 0,
-    /// No full-size preview; the IFD0 thumbnail is still written.
+    /// No embedded preview; the IFD0 thumbnail is still written.
     None = 1,
 }
 

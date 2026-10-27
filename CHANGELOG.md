@@ -27,8 +27,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--force`, `--uncompressed`, `--no-preview`, `--with-sidecar` (use `<name>.xmp` as the
   DNG's XMP), `-j/--jobs` and `--json` (JSON Lines). Classic NEFs are skipped with a note;
   a progress line shows on a terminal and a summary reports throughput. By default up to 4
-  files run at once, at most one per 2 GB of memory, since each file already uses every
-  core.
+  files run at once (on Linux and macOS also at most one per 2 GB of memory), since each
+  file already uses every core.
 - **`ticoraw report <file>`**: a privacy-safe JSON bug report (version, OS, camera,
   firmware, compression mode, codestream header in hex, decode outcome) with no serial
   numbers, GPS, owner, dates, file names, paths or pixels. Tests check that none of these
@@ -101,13 +101,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ticoraw convert` reports a classic NEF next to an existing DNG as skipped (classic),
   not as FAILED with exit status 1: files are classified before the existing-output
   policy applies.
-- An interrupted `ticoraw convert` or `decode` (Ctrl-C) no longer leaves half-written DNG
-  temporary files behind.
+- An interrupted `ticoraw convert` or `decode` (Ctrl-C or SIGTERM) removes its in-flight
+  temporary files. Only a hard kill, crash or power loss can leave a stale
+  `.<name>.dng.ticoraw-<pid>.tmp`; the final `.dng` is never partial.
 - The `convert` progress line takes its width from the terminal itself rather than only
   from `$COLUMNS`, which shells do not export, so it no longer wraps and leaves stale
   lines on narrow terminals.
-- The default for `-j/--jobs` (at most one file per 2 GB of memory) now matches what the
-  CLI does on Windows too.
+- The `-j/--jobs` documentation now says the 2 GB-per-file memory cap applies on Linux and
+  macOS; on Windows only the core-count cap (at most 4) applies.
 - Python: `ticoraw.to_dng(source, dest)` writes to a temporary file and renames it over
   `dest`, so a failed write no longer destroys an existing DNG.
 - Python and WebAssembly: an empty `xmp` is treated as no replacement, as in the C API,

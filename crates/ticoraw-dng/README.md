@@ -64,7 +64,7 @@ written: a second (illuminant A) colour matrix, `NoiseProfile`, lens-correction 
 
 | Field | Default | Meaning |
 |---|---|---|
-| `compression` | `LosslessJpeg` | `Uncompressed` writes one 16-bit strip (about three times larger) |
+| `compression` | `LosslessJpeg` | `Uncompressed` writes one 16-bit strip (about 1.7 to 2.6 times larger) |
 | `preview` | `Auto` | `None` skips SubIFD 1 (the IFD0 thumbnail is always written) |
 | `carry_xmp` | `true` | Copy the NEF's XMP packet |
 | `extra_xmp` | `None` | An XMP packet (for example a merged sidecar) that **replaces** the NEF's; written even when `carry_xmp` is `false` |

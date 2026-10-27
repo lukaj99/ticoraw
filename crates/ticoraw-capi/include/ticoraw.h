@@ -82,7 +82,7 @@ enum TrCompression
  {
   // Lossless JPEG in 256x256 tiles, about the size of Adobe's DNGs (the default).
   TR_COMPRESSION_LOSSLESS_JPEG = 0,
-  // One uncompressed 16-bit strip: about three times larger, simplest to read.
+  // One uncompressed 16-bit strip: about 1.7 to 2.6 times larger, simplest to read.
   TR_COMPRESSION_UNCOMPRESSED = 1,
 };
 #ifndef __cplusplus
@@ -102,7 +102,7 @@ enum TrPreview
   // The camera's embedded JPEG when there is a usable one, otherwise a half-size
   // rendering of the raw data (the default).
   TR_PREVIEW_AUTO = 0,
-  // No full-size preview; the IFD0 thumbnail is still written.
+  // No embedded preview; the IFD0 thumbnail is still written.
   TR_PREVIEW_NONE = 1,
 };
 #ifndef __cplusplus

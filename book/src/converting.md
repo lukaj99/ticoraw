@@ -138,8 +138,8 @@ Each file is decoded and compressed on every core of your computer, and a few fi
 converted at the same time. On an Apple M5 Pro, the 13 public samples (251 MB of NEFs,
 10.7 to 45.7 megapixels each) convert in 0.7 seconds, about 18 files per second.
 
-`--jobs` sets how many files are converted at once. The default is up to 4, and at most one
-per 2 GB of memory, which gives nearly all the speed. Each file in progress needs several
+`--jobs` sets how many files are converted at once. The default is up to 4 (on Linux and
+macOS also at most one per 2 GB of memory), which gives nearly all the speed. Each file in progress needs several
 hundred megabytes of memory, so lower `--jobs` (for example `-j 1`) on a computer that is
 short of memory.
 
@@ -150,7 +150,9 @@ short of memory.
 - **Your NEFs are only read**, never changed, moved or deleted.
 - **Writes are atomic.** Each DNG is written to a temporary file next to its final place,
   then renamed into place. If anything fails part-way, you never get a half-written DNG,
-  and an existing file is never destroyed.
+  and an existing file is never destroyed. Ctrl-C removes the temporary file; only a hard
+  kill or power loss can leave a stale `.<name>.dng.ticoraw-<pid>.tmp`, which you can
+  delete.
 - **No accidental overwrites.** Existing DNGs are kept unless you pass `--force`, and ticoraw
   refuses to write over its own input.
 

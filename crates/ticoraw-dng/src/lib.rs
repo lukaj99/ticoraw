@@ -79,7 +79,8 @@ pub enum Compression {
     /// Lossless JPEG (Compression 7) in 256x256 tiles: about the size of Adobe's DNGs.
     #[default]
     LosslessJpeg,
-    /// One uncompressed 16-bit strip (Compression 1): three times larger, simplest to read.
+    /// One uncompressed 16-bit strip (Compression 1): about 1.7 to 2.6 times larger,
+    /// simplest to read.
     Uncompressed,
 }
 

@@ -68,14 +68,12 @@ When distribution is allowed, three things are worth knowing:
   `<meta>` policy covers the page but not its Web Workers. The workers run only the
   decoder, which does no I/O, but a header covers them as well.
 - A host must not inject scripts (analytics, banners): the policy blocks them.
-- The patent gate is the repository variable `ALLOW_BINARY_DISTRIBUTION`, and only that:
-  no manual run is needed. While it is not `'true'` (it is unset today), no workflow builds
-  the converter for deployment. Once it is `'true'`,
-  [`pages.yml`](../.github/workflows/pages.yml) builds the converter into `/convert/` and
-  deploys it to GitHub Pages with the documentation, on every push to `main` that changes
-  the site's sources and on every manual run on `main`. Setting the variable for another
-  reason (to attach CLI binaries to a release, for example) therefore deploys the
-  converter too.
+- The patent gate has two keys: the repository variable `ALLOW_BINARY_DISTRIBUTION` must be
+  `'true'` (it is unset today) **and** [`pages.yml`](../.github/workflows/pages.yml) must be
+  run by hand on `main` with `include_converter = yes`. Only then is the converter built
+  into `/convert/` and deployed with the documentation. Ordinary pushes deploy the docs
+  only, which replaces the whole site and so removes a previously deployed converter; run
+  the workflow by hand again to restore it.
 
 ## What the page does
 

@@ -16,7 +16,8 @@ Yes. ticoraw is careful with your photos:
 
 - **It never modifies your NEFs.** It opens them for reading only.
 - **It writes atomically.** Each DNG goes to a temporary file first, and only a complete
-  file is renamed into place. A failure part-way leaves no half-written DNG behind.
+  file is renamed into place. A failure part-way leaves no half-written DNG behind (a hard
+  kill or power loss can leave a hidden `.tmp` file next to it, which is safe to delete).
 - **It never overwrites by accident.** An existing DNG is kept unless you pass `--force`,
   and ticoraw refuses to write over its own input file.
 - **The decoder is robust.** It is tested against corrupted and hostile files and fuzzed,

@@ -39,7 +39,11 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.8
-exceptions = []
+exceptions = [
+    # Build-time only: pyo3-build-config (the pyo3 and numpy build scripts) in the separate
+    # crates/ticoraw-py workspace. Never linked into the wheel.
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "target-lexicon" },
+]
 # The list above is a policy, not an inventory: BSD, ISC and Zlib are pre-approved even
 # while no current dependency uses them.
 unused-allowed-license = "allow"
