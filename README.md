@@ -103,9 +103,12 @@ Details worth knowing:
 
 - **DNG output** keeps the CFA pattern, black and white levels, colour matrix, as-shot
   white balance, the NEF's `Orientation` and, when the MakerNote has one, the camera's
-  recommended crop as `DefaultCropOrigin` / `DefaultCropSize`. `BaselineExposure` is not
-  written, so the default rendering can differ in brightness from an Adobe DNG of the
-  same file; the CFA values are identical.
+  recommended crop as `DefaultCropOrigin` / `DefaultCropSize`, and Adobe's
+  `BaselineExposure` (+1 EV for HLG tone-mode frames on top of the per-body value; equal to
+  Adobe's on every ground-truth DNG). `UniqueCameraModel` carries Adobe's camera name, so
+  Lightroom and Camera Raw apply their own profile. Other raw processors use their own
+  tone curves, so their rendering can still differ from Adobe's; the CFA values are
+  identical.
 - **PGM output** is the bare mosaic as big-endian 16-bit samples (maxval 16383 for 14-bit
   data, else 65535).
 - **Writes are atomic.** `decode` writes to a temporary file next to the output, then

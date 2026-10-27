@@ -54,8 +54,20 @@ pub struct MakerNote {
     pub wb_rb_levels: Option<[(u32, u32); 2]>,
     /// Tag 0x0045: the recommended crop (x, y, width, height) inside the raw frame.
     pub crop_area: Option<[u16; 4]>,
+    /// Tag 0x001E: colour space (1 = sRGB, 2 = Adobe RGB, 4 = BT.2100, i.e. HLG tone mode).
+    pub color_space: Option<u16>,
+    /// Whether tag 0x0023 (Picture Control data) names an HLG Picture Control.
+    pub hlg_picture_control: bool,
     /// Raw payloads of tags whose layout is camera-generation specific (0x0051, 0x0058, ...).
     pub opaque: Vec<(u16, Vec<u8>)>,
+}
+
+impl MakerNote {
+    /// Whether the frame was shot in Nikon's HLG tone mode.
+    #[must_use]
+    pub fn is_hlg(&self) -> bool {
+        self.color_space == Some(4) || self.hlg_picture_control
+    }
 }
 
 const OPAQUE_TAGS: [u16; 4] = [0x0051, 0x0058, 0x0059, 0x005B];
@@ -189,6 +201,13 @@ fn find_maker_note(t: &Tiff<'_>, ifds: &[Ifd]) -> Result<Option<MakerNote>> {
         }
         _ => None,
     };
+    let color_space = match ifd.get(0x1E) {
+        Some(e) if e.typ == 3 && e.count >= 1 => mt.uints(e)?.first().map(|&v| v as u16),
+        _ => None,
+    };
+    let hlg_picture_control = ifd
+        .get(0x23)
+        .is_some_and(|e| mt.bytes(e).windows(5).any(|w| w == b"(HLG)"));
     let opaque = OPAQUE_TAGS
         .iter()
         .filter_map(|&tag| ifd.get(tag).map(|e| (tag, mt.bytes(e).to_vec())))
@@ -197,6 +216,8 @@ fn find_maker_note(t: &Tiff<'_>, ifds: &[Ifd]) -> Result<Option<MakerNote>> {
         black_level,
         wb_rb_levels,
         crop_area,
+        color_space,
+        hlg_picture_control,
         opaque,
     }))
 }

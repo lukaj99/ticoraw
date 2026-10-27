@@ -49,7 +49,7 @@ is identical either way.
 | `entropy` | `Layout::new`: validates the supported profile and builds bands, packets and the WGT mapping once; `decode_slice`: precinct headers, GTLIs, packets, sub-packets, dequantisation, coefficient placement |
 | `wavelet` | `synthesize_1d`, `synthesize_row` (horizontal cascade), `synthesize_columns` (frame-wide vertical) |
 | `mct` | `inverse_star_tetrix` (four lifting steps), `assemble_rggb` (interleave through the curve) |
-| `dng` | `decode_dng_cfa` (lossless JPEG SOF3 or uncompressed CFA from a DNG, for ground truth) and `decode_lossless_jpeg` (one SOF3 stream to a `LosslessJpeg` with its dimensions); `encode_uncompressed_dng`, fallible, writing `Orientation` and `DefaultCropOrigin` / `DefaultCropSize` but not `BaselineExposure` |
+| `dng` | `decode_dng_cfa` (lossless JPEG SOF3 or uncompressed CFA from a DNG, for ground truth) and `decode_lossless_jpeg` (one SOF3 stream to a `LosslessJpeg` with its dimensions); `encode_uncompressed_dng`, fallible, writing `Orientation`, `DefaultCropOrigin` / `DefaultCropSize`, `BaselineExposure` and Adobe's `UniqueCameraModel` name |
 | `lib` | Public entry points `inspect_nef`, `inspect_nef_prefix`, `decode_nef`, `decode_ticoraw`; `NikonCompression::{from_code, code}`; slice framing; per-model colour profile (Z6III verified against Adobe; Z8, Z9, Zf, Z5II, Z50II and ZR from the public LibRaw / dnglab tables, unverified) |
 | `error` | `TicoError` |
 

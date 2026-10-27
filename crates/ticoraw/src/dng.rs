@@ -559,8 +559,8 @@ fn decode_scan(
 ///
 /// Besides the mosaic and its levels, the DNG carries `Orientation`, `DefaultCropOrigin` /
 /// `DefaultCropSize` (when [`DecodedRaw::crop`] is known), `ColorMatrix1` with D65 as
-/// `CalibrationIlluminant1`, and `AsShotNeutral` (when known). `BaselineExposure` is not
-/// written, so raw processors apply none.
+/// `CalibrationIlluminant1`, and `AsShotNeutral` and `BaselineExposure` (when known; see
+/// [`DecodedRaw::baseline_exposure`]).
 ///
 /// Models without a built-in colour profile get an identity `ColorMatrix1` (DNG requires
 /// one), so their colours will be wrong in raw processors; see
@@ -606,7 +606,9 @@ pub fn encode_uncompressed_dng(raw: &DecodedRaw) -> Result<Vec<u8>> {
     w.bytes(0x828E, &c.cfa_pattern);
     w.bytes(0xC612, &[1, 4, 0, 0]);
     w.bytes(0xC613, &[1, 1, 0, 0]);
-    w.ascii(0xC614, &format!("{} {}", raw.make, raw.model));
+    let unique = crate::adobe_camera_name(&raw.model)
+        .map_or_else(|| format!("{} {}", raw.make, raw.model), str::to_owned);
+    w.ascii(0xC614, &unique);
     w.short(0xC619, &[2, 2]);
     w.short(0xC61A, &c.black_level);
     w.long(0xC61D, &[u32::from(c.white_level)]);
@@ -634,6 +636,9 @@ pub fn encode_uncompressed_dng(raw: &DecodedRaw) -> Result<Vec<u8>> {
     }
     if let Some(n) = &c.as_shot_neutral {
         w.rational(0xC628, n);
+    }
+    if let Some(ev) = raw.baseline_exposure {
+        w.srational(0xC62A, &[ev]);
     }
     w.finish(&img.pixels)
 }
@@ -778,6 +783,7 @@ mod tests {
                 as_shot_neutral: Some([(512, 924), (1, 1), (512, 717)]),
             },
             orientation: 8,
+            baseline_exposure: Some((125, 100)),
             crop: Some(crate::Crop {
                 x: 1,
                 y: 1,
@@ -796,6 +802,10 @@ mod tests {
         let ifd = t.ifd(t.first_ifd).unwrap();
         assert_eq!(tiff::first_uint(&t, &ifd, 0x112).unwrap(), Some(8));
         assert_eq!(t.uints(ifd.get(0xC620).unwrap()).unwrap(), vec![4, 2]);
+        assert_eq!(
+            t.rationals(ifd.get(0xC62A).unwrap()).unwrap(),
+            vec![(125, 100)]
+        );
         let mut bad = raw.clone();
         bad.image.pixels.pop();
         assert!(encode_uncompressed_dng(&bad).is_err());

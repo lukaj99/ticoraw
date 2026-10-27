@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `DecodedRaw::baseline_exposure`, written to DNGs as `BaselineExposure`: Adobe's per-body
+  baseline plus one stop for frames shot in Nikon's HLG tone mode (MakerNote ColorSpace
+  BT.2100 or an HLG Picture Control). Matches Adobe's value on every ground-truth DNG
+  (Z6III: +0.25 EV SDR, +1.25 EV HLG); other bodies get only the HLG stop.
+- `MakerNote::{color_space, hlg_picture_control, is_hlg}`.
+- DNG `UniqueCameraModel` uses Adobe's camera names (`Nikon Z 6 3`, ...) so Adobe software
+  applies its own camera profile to ticoraw DNGs. Only the Z6III name is confirmed.
+- The ground-truth suite also checks `BaselineExposure`, `Orientation` and the default crop
+  against each Adobe DNG.
+
 ## [0.1.0] - 2026-10-27
 
 ### Added

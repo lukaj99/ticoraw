@@ -227,6 +227,37 @@ fn check(dng_path: &Path, nefs: &HashMap<String, PathBuf>) -> Result<Outcome, St
         ));
     }
 
+    // Rendering metadata the DNG writer emits must agree with Adobe's.
+    let adobe = rendering_metadata(&dng)?;
+    let ours_ev = raw
+        .baseline_exposure
+        .map(|(n, d)| (i64::from(n), i64::from(d)));
+    let same_ratio = |a: Option<(i64, i64)>, b: Option<(i64, i64)>| match (a, b) {
+        (Some((an, ad)), Some((bn, bd))) => an * bd == bn * ad,
+        (None, None) => true,
+        // An absent BaselineExposure means 0 EV.
+        (Some((n, _)), None) | (None, Some((n, _))) => n == 0,
+    };
+    if !same_ratio(ours_ev, adobe.baseline_exposure) {
+        metadata.push(format!(
+            "baseline exposure {ours_ev:?} != DNG {:?}",
+            adobe.baseline_exposure
+        ));
+    }
+    if adobe
+        .orientation
+        .is_some_and(|o| o != u64::from(raw.orientation))
+    {
+        metadata.push(format!(
+            "orientation {} != DNG {:?}",
+            raw.orientation, adobe.orientation
+        ));
+    }
+    let our_crop = raw.crop.map(|c| [c.x, c.y, c.width, c.height]);
+    if adobe.crop.is_some() && our_crop != adobe.crop {
+        metadata.push(format!("crop {our_crop:?} != DNG {:?}", adobe.crop));
+    }
+
     Ok(Outcome::Compared(Comparison {
         nef: nef_name,
         width,
@@ -267,6 +298,59 @@ fn original_raw_file_name(dng: &[u8]) -> Result<Option<String>, String> {
 }
 
 /// Whether the DNG has a full-resolution CFA IFD (linear / demosaiced DNGs do not).
+/// Adobe's rendering metadata for the frame.
+struct RenderingMetadata {
+    /// IFD0 `BaselineExposure` (0xC62A).
+    baseline_exposure: Option<(i64, i64)>,
+    /// IFD0 `Orientation` (0x112).
+    orientation: Option<u64>,
+    /// Raw IFD `DefaultCropOrigin` / `DefaultCropSize` as integers (x, y, width, height).
+    crop: Option<[usize; 4]>,
+}
+
+fn rendering_metadata(dng: &[u8]) -> Result<RenderingMetadata, String> {
+    let t = Tiff::parse(dng, 0).map_err(|e| format!("DNG: {e}"))?;
+    let ifd0 = t.ifd(t.first_ifd).map_err(|e| format!("DNG IFD0: {e}"))?;
+    let baseline_exposure = match ifd0.get(0xC62A) {
+        Some(e) => t
+            .rationals(e)
+            .map_err(|e| format!("BaselineExposure: {e}"))?
+            .first()
+            .copied(),
+        None => None,
+    };
+    let orientation =
+        tiff::first_uint(&t, &ifd0, 0x112).map_err(|e| format!("Orientation: {e}"))?;
+    let ifds = tiff::all_ifds(&t).map_err(|e| format!("DNG IFDs: {e}"))?;
+    let tag = |ifd, tag| tiff::first_uint(&t, ifd, tag).ok().flatten();
+    let raw = ifds
+        .iter()
+        .find(|ifd| tag(ifd, 0xFE) == Some(0) && tag(ifd, 0x106) == Some(32803));
+    let pair = |ifd: &tiff::Ifd, tag: u16| -> Option<[usize; 2]> {
+        let e = ifd.get(tag)?;
+        let v: Vec<usize> = match e.typ {
+            5 => t
+                .rationals(e)
+                .ok()?
+                .iter()
+                .map(|&(n, d)| (n / d.max(1)) as usize)
+                .collect(),
+            _ => t.uints(e).ok()?.iter().map(|&v| v as usize).collect(),
+        };
+        Some([*v.first()?, *v.get(1)?])
+    };
+    let crop = raw.and_then(|ifd| {
+        let [x, y] = pair(ifd, 0xC61F)?;
+        let [w, h] = pair(ifd, 0xC620)?;
+        Some([x, y, w, h])
+    });
+    Ok(RenderingMetadata {
+        baseline_exposure,
+        orientation,
+        crop,
+    })
+}
+
 fn has_cfa_ifd(dng: &[u8]) -> Result<bool, String> {
     let t = Tiff::parse(dng, 0).map_err(|e| format!("DNG: {e}"))?;
     let ifds = tiff::all_ifds(&t).map_err(|e| format!("DNG IFDs: {e}"))?;

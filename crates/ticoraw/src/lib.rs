@@ -105,6 +105,11 @@ pub struct DecodedRaw {
     /// 0x0045. `None` when the tag is absent, empty or does not fit inside the mosaic.
     /// Written to the DNG as `DefaultCropOrigin` / `DefaultCropSize`.
     pub crop: Option<Crop>,
+    /// Exposure, in EV as a signed rational, that a raw processor should add to render the
+    /// frame like the camera intended: Adobe's per-body baseline plus one stop for frames shot
+    /// in Nikon's HLG tone mode. `None` when unknown (DNG readers then assume 0). Written to
+    /// the DNG as `BaselineExposure`.
+    pub baseline_exposure: Option<(i32, i32)>,
 }
 
 /// A rectangle inside the CFA mosaic, in photosites.
@@ -337,6 +342,8 @@ pub fn decode_nef(nef: &[u8]) -> Result<DecodedRaw> {
         .wb_rb_levels
         .map(|[(rn, rd), (bn, bd)]| [(rd, rn), (1, 1), (bd, bn)]);
     let (white_level, color_matrix) = camera_profile(&c.model);
+    let baseline_exposure =
+        baseline_exposure(&c.model, c.maker_note.is_hlg()).map(|cev| (cev, 100));
     let crop = c
         .maker_note
         .crop_area
@@ -352,6 +359,7 @@ pub fn decode_nef(nef: &[u8]) -> Result<DecodedRaw> {
         model: c.model,
         orientation: c.orientation,
         crop,
+        baseline_exposure,
         image,
         color: ColorInfo {
             cfa_pattern: c.cfa_pattern,
@@ -361,6 +369,43 @@ pub fn decode_nef(nef: &[u8]) -> Result<DecodedRaw> {
             as_shot_neutral,
         },
     })
+}
+
+/// Adobe's camera name for a TIFF `Model`, written as the DNG `UniqueCameraModel` so Adobe
+/// software applies its own camera profile (tone curve, looks) to our DNGs.
+///
+/// `Nikon Z 6 3` is confirmed from Adobe DNGs; the others follow the same pattern
+/// (`Nikon Z 6` is also confirmed for the classic Z 6). An unknown model keeps
+/// `"<Make> <Model>"`, so a wrong guess only means Adobe falls back to a generic profile.
+pub(crate) fn adobe_camera_name(model: &str) -> Option<&'static str> {
+    Some(match model {
+        "NIKON Z6_3" => "Nikon Z 6 3",
+        "NIKON Z 8" => "Nikon Z 8",
+        "NIKON Z 9" => "Nikon Z 9",
+        "NIKON Z f" => "Nikon Z f",
+        "NIKON Z5_2" => "Nikon Z 5 2",
+        "NIKON Z50_2" => "Nikon Z 50 2",
+        "NIKON ZR" => "Nikon ZR",
+        _ => return None,
+    })
+}
+
+/// Adobe's `BaselineExposure` in hundredths of an EV.
+///
+/// Adobe adds a per-body base value, plus a full stop for HLG tone mode, in which Nikon
+/// exposes the sensor one stop lower. Both are confirmed on Z6III frames (+0.25 SDR, +1.25
+/// HLG at every ISO from 400 to 64000); for other bodies the base value is unknown, so only
+/// the HLG stop is applied.
+fn baseline_exposure(model: &str, hlg: bool) -> Option<i32> {
+    let base = match model {
+        "NIKON Z6_3" => Some(25),
+        _ => None,
+    };
+    let hlg_stop = if hlg { 100 } else { 0 };
+    match base {
+        Some(b) => Some(b + hlg_stop),
+        None => hlg.then_some(hlg_stop),
+    }
 }
 
 /// Per-model white level and XYZ(D65)->camera matrix (Adobe's ColorMatrix for D65).
@@ -570,4 +615,23 @@ pub(crate) fn par_chunks_mut<T: Send>(
     f: impl Fn(usize, &mut [T]) + Sync + Send,
 ) {
     data.chunks_mut(size).enumerate().for_each(|(i, c)| f(i, c));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{adobe_camera_name, baseline_exposure};
+
+    #[test]
+    fn baseline_exposure_follows_adobe() {
+        assert_eq!(baseline_exposure("NIKON Z6_3", false), Some(25));
+        assert_eq!(baseline_exposure("NIKON Z6_3", true), Some(125));
+        assert_eq!(baseline_exposure("NIKON Z 8", true), Some(100));
+        assert_eq!(baseline_exposure("NIKON Z 8", false), None);
+    }
+
+    #[test]
+    fn adobe_names_known_bodies() {
+        assert_eq!(adobe_camera_name("NIKON Z6_3"), Some("Nikon Z 6 3"));
+        assert_eq!(adobe_camera_name("NIKON Z 99"), None);
+    }
 }
