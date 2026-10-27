@@ -1,0 +1,49 @@
+[build-system]
+# 1.9.4 is the first maturin that links pyo3 extension modules without pyo3's deprecated
+# `extension-module` feature.
+requires = ["maturin>=1.9.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "ticoraw"
+description = "Bit-exact decoder for Nikon High Efficiency (HE/HE*) NEF raw files, with numpy arrays and DNG conversion"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+authors = [{ name = "Luka Jovanovic", email = "lukaj99@users.noreply.github.com" }]
+keywords = ["nikon", "nef", "raw", "dng", "jpeg-xs", "ticoraw"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Typing :: Typed",
+]
+dependencies = ["numpy>=1.21"]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/lukaj99/ticoraw"
+Source = "https://github.com/lukaj99/ticoraw/tree/main/crates/ticoraw-py"
+Issues = "https://github.com/lukaj99/ticoraw/issues"
+
+[tool.maturin]
+# The Python package `ticoraw` lives in python/ticoraw (with its type stubs and py.typed)
+# and re-exports the compiled extension `ticoraw._ticoraw`. The Rust library is called
+# `ticoraw_py` so that it can depend on the `ticoraw` crate.
+python-source = "python"
+module-name = "ticoraw._ticoraw"
+bindings = "pyo3"
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

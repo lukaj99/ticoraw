@@ -1,0 +1,54 @@
+[package]
+name = "ticoraw-py"
+# Keep in step with the workspace version: maturin takes the wheel version from here.
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lukaj99/ticoraw"
+authors = ["Luka Jovanovic <lukaj99@users.noreply.github.com>"]
+description = "Python bindings (pyo3) for the ticoraw Nikon HE/HE* NEF decoder and DNG writer"
+readme = "README.md"
+publish = false
+
+# Kept out of the main workspace, like fuzz/: pyo3's build script needs a Python interpreter
+# and maturin does the final link of the extension module, so `cargo test --workspace` and
+# the 1.85 MSRV check of the main workspace stay Python-free on every OS. This directory is
+# its own workspace with its own Cargo.lock.
+[workspace]
+members = ["."]
+
+[lib]
+name = "ticoraw_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+# abi3-py39: one wheel per platform for CPython 3.9 and every later version.
+pyo3 = { version = "0.30.1", features = ["abi3-py39"] }
+# BSD-2-Clause.
+numpy = "0.30.0"
+ticoraw = { path = "../ticoraw" }
+ticoraw-dng = { path = "../ticoraw-dng" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+cast_precision_loss = "allow"
+too_many_lines = "allow"
+needless_range_loop = "allow"
+single_match_else = "allow"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
