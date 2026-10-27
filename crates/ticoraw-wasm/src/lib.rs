@@ -13,6 +13,9 @@
 //! | `toDng(bytes, options?)` | a complete DNG as a `Uint8Array` |
 //! | `decodeDng(bytes)` | the CFA mosaic of a DNG (to check a conversion) |
 //!
+//! `bytes` may be a `Uint8Array` (or a Node `Buffer`), an `ArrayBuffer`, or any other typed
+//! array or `DataView`, whose bytes are read; anything else throws a `TypeError`.
+//!
 //! Every failure is thrown as an `Error` whose `name` is `"TicoError"`, with `kind` set to
 //! the Rust error variant (`"Truncated"`, `"Container"`, `"Unsupported"`, ...) and
 //! `message` to its text; `Truncated` errors also carry `what` and `offset`. A malformed
@@ -29,7 +32,7 @@
 
 pub mod model;
 
-use js_sys::{Array, Object, Reflect, Uint8Array, Uint16Array};
+use js_sys::{Array, ArrayBuffer, Object, Reflect, Uint8Array, Uint16Array};
 use ticoraw::{CodestreamInfo, NefInspection, RawCodec};
 use wasm_bindgen::prelude::*;
 
@@ -121,7 +124,7 @@ export interface DngOptions {
   preview?: "auto" | "none";
   /** Copy the NEF's XMP packet (default `true`). */
   carryXmp?: boolean;
-  /** An XMP packet that replaces the NEF's, written as given. */
+  /** An XMP packet that replaces the NEF's, written as given. Empty means none. */
   extraXmp?: Uint8Array | string;
   /** Written as `OriginalRawFileName`, usually the NEF's file name. */
   originalRawFileName?: string;
@@ -146,10 +149,11 @@ export interface TicoError extends Error {
  * Decodes a HE/HE* NEF and writes it as a complete DNG: lossless JPEG tiles, EXIF, GPS,
  * XMP, the Nikon MakerNote and a preview.
  *
- * @throws {TypeError} for a malformed `options` object.
+ * @throws {TypeError} when `bytes` is not an `ArrayBuffer` or a typed array / `DataView`,
+ * or for a malformed `options` object.
  * @throws {TicoError} when the file is not a HE/HE* NEF or is malformed.
  */
-export function toDng(bytes: Uint8Array, options?: DngOptions | null): Uint8Array;
+export function toDng(bytes: ArrayBuffer | ArrayBufferView, options?: DngOptions | null): Uint8Array;
 "#;
 
 /// The crate version, e.g. `"0.1.0"`.
@@ -161,12 +165,16 @@ pub fn version() -> String {
 
 /// Parses a NEF's container and codestream headers without decoding pixels.
 ///
+/// @throws {TypeError} when `bytes` is not an `ArrayBuffer` or a typed array / `DataView`.
 /// @throws {TicoError} when the file is not a NEF this library can read (a classic,
 /// non-HE NEF is not an error: its `codec` is `"classic"`).
 #[wasm_bindgen(unchecked_return_type = "Inspection")]
-pub fn inspect(bytes: &[u8]) -> Result<JsValue, JsValue> {
+pub fn inspect(
+    #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] bytes: &JsValue,
+) -> Result<JsValue, JsValue> {
     install_panic_hook();
-    let i = ticoraw::inspect_nef(bytes).map_err(|e| tico_error(&(&e).into()))?;
+    let bytes = input_bytes(bytes, "inspect: bytes")?;
+    let i = ticoraw::inspect_nef(&bytes).map_err(|e| tico_error(&(&e).into()))?;
     inspection(&i)
 }
 
@@ -176,31 +184,37 @@ pub fn inspect(bytes: &[u8]) -> Result<JsValue, JsValue> {
 /// short the error is `Truncated` with `offset` = the strip start, so read up to
 /// `offset + 64 KiB` and retry.
 ///
-/// @throws {TypeError} when `fileLength` is not a non-negative integer.
+/// @throws {TypeError} when `prefix` is not an `ArrayBuffer` or a typed array / `DataView`,
+/// or `fileLength` is not a non-negative integer.
 /// @throws {TicoError} as `inspect` does; kind `"Truncated"` when the prefix is too short.
 #[wasm_bindgen(js_name = inspectPrefix, unchecked_return_type = "Inspection")]
 pub fn inspect_prefix(
-    prefix: &[u8],
+    #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] prefix: &JsValue,
     #[wasm_bindgen(js_name = fileLength)] file_length: f64,
 ) -> Result<JsValue, JsValue> {
     install_panic_hook();
+    let prefix = input_bytes(prefix, "inspectPrefix: prefix")?;
     let len = model::parse_length(file_length).ok_or_else(|| {
         JsValue::from(js_sys::TypeError::new(
             "inspectPrefix: fileLength must be a non-negative integer",
         ))
     })?;
-    let i = ticoraw::inspect_nef_prefix(prefix, len).map_err(|e| tico_error(&(&e).into()))?;
+    let i = ticoraw::inspect_nef_prefix(&prefix, len).map_err(|e| tico_error(&(&e).into()))?;
     inspection(&i)
 }
 
 /// Decodes a HE/HE\* NEF to its CFA mosaic and colour metadata. The mosaic is bit-exact
 /// with the CFA image of Adobe's DNG of the same file.
 ///
+/// @throws {TypeError} when `bytes` is not an `ArrayBuffer` or a typed array / `DataView`.
 /// @throws {TicoError} when the file is not a HE/HE\* NEF or is malformed.
 #[wasm_bindgen(unchecked_return_type = "DecodedRaw")]
-pub fn decode(bytes: &[u8]) -> Result<JsValue, JsValue> {
+pub fn decode(
+    #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] bytes: &JsValue,
+) -> Result<JsValue, JsValue> {
     install_panic_hook();
-    let raw = ticoraw::decode_nef(bytes).map_err(|e| tico_error(&(&e).into()))?;
+    let bytes = input_bytes(bytes, "decode: bytes")?;
+    let raw = ticoraw::decode_nef(&bytes).map_err(|e| tico_error(&(&e).into()))?;
     let c = &raw.color;
     let unique = ticoraw::unique_camera_model(&raw.make, &raw.model);
     let crop = match raw.crop {
@@ -247,11 +261,13 @@ pub fn decode(bytes: &[u8]) -> Result<JsValue, JsValue> {
 ///
 /// Its TypeScript signature is written in `TS_TYPES`, so that `options` can be omitted.
 ///
-/// @throws {TypeError} for a malformed `options` object.
+/// @throws {TypeError} when `bytes` is not an `ArrayBuffer` or a typed array / `DataView`,
+/// or for a malformed `options` object.
 /// @throws {TicoError} when the file is not a HE/HE\* NEF or is malformed.
 #[wasm_bindgen(js_name = toDng, skip_typescript)]
-pub fn to_dng(bytes: &[u8], options: Option<Object>) -> Result<Vec<u8>, JsValue> {
+pub fn to_dng(bytes: &JsValue, options: Option<Object>) -> Result<Vec<u8>, JsValue> {
     install_panic_hook();
+    let bytes = input_bytes(bytes, "toDng: bytes")?;
     let opts = match options {
         None => ticoraw_dng::Options::default(),
         Some(o) => {
@@ -259,17 +275,21 @@ pub fn to_dng(bytes: &[u8], options: Option<Object>) -> Result<Vec<u8>, JsValue>
             model::parse_options(entries).map_err(|m| JsValue::from(js_sys::TypeError::new(&m)))?
         }
     };
-    ticoraw_dng::convert(bytes, &opts).map_err(|e| tico_error(&(&e).into()))
+    ticoraw_dng::convert(&bytes, &opts).map_err(|e| tico_error(&(&e).into()))
 }
 
 /// Decodes the full-resolution CFA image of a DNG (lossless JPEG or uncompressed), for
 /// example to check that `toDng` round-trips.
 ///
+/// @throws {TypeError} when `bytes` is not an `ArrayBuffer` or a typed array / `DataView`.
 /// @throws {TicoError} for a DNG without a readable CFA image.
 #[wasm_bindgen(js_name = decodeDng, unchecked_return_type = "DngCfa")]
-pub fn decode_dng(bytes: &[u8]) -> Result<JsValue, JsValue> {
+pub fn decode_dng(
+    #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] bytes: &JsValue,
+) -> Result<JsValue, JsValue> {
     install_panic_hook();
-    let d = ticoraw::dng::decode_dng_cfa(bytes).map_err(|e| tico_error(&(&e).into()))?;
+    let bytes = input_bytes(bytes, "decodeDng: bytes")?;
+    let d = ticoraw::dng::decode_dng_cfa(&bytes).map_err(|e| tico_error(&(&e).into()))?;
     obj(&[
         ("width", num(d.image.width)),
         ("height", num(d.image.height)),
@@ -350,6 +370,39 @@ fn codestream(cs: &CodestreamInfo) -> Result<JsValue, JsValue> {
                 .map_or(JsValue::NULL, JsValue::from),
         ),
     ])
+}
+
+/// Copies a byte argument into wasm memory: the viewed bytes of a typed array or `DataView`
+/// (`ArrayBuffer.isView`, which also holds for views from another realm), or the whole of an
+/// `ArrayBuffer`. Anything else is a `TypeError`: wasm-bindgen's own `&[u8]` glue reads
+/// `.length`, so an `ArrayBuffer` would arrive as zero bytes and fail as a truncated file.
+fn input_bytes(v: &JsValue, what: &str) -> Result<Vec<u8>, JsValue> {
+    let view = if ArrayBuffer::is_view(v) {
+        // `buffer`, `byteOffset` and `byteLength` are read as properties, so these accessors
+        // work on every typed array and on a `DataView`.
+        let v: &Uint8Array = v.unchecked_ref();
+        Uint8Array::new_with_byte_offset_and_length(&v.buffer(), v.byte_offset(), v.byte_length())
+    } else if v.is_instance_of::<ArrayBuffer>() {
+        Uint8Array::new(v)
+    } else {
+        let got = if v.is_null() {
+            "null".to_owned()
+        } else if Array::is_array(v) {
+            "an Array".to_owned()
+        } else {
+            match v.js_typeof().as_string().unwrap_or_default().as_str() {
+                "undefined" => "undefined".to_owned(),
+                "object" => "an object".to_owned(),
+                t => format!("a {t}"),
+            }
+        };
+        return Err(js_sys::TypeError::new(&format!(
+            "{what} must be a Uint8Array, an ArrayBuffer or another typed array or DataView, \
+             not {got}"
+        ))
+        .into());
+    };
+    Ok(view.to_vec())
 }
 
 /// Reads the own enumerable properties of a `toDng` options object.

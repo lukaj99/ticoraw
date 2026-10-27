@@ -4,7 +4,7 @@
 #   web/        wasm-pack --target web: browsers, Web Workers, Deno and bundlers (ESM)
 #   node/       wasm-pack --target nodejs: Node.js (CommonJS, loads the .wasm synchronously)
 #   worker.js   the Web Worker pool, with its types in index.d.ts
-#   package.json, README.md, LICENSE-MIT, LICENSE-APACHE
+#   package.json, README.md, LICENSE-MIT, LICENSE-APACHE, THIRD-PARTY-NOTICES.md
 #
 # The package is built and tested but NOT published: compiled decoders stay unpublished
 # pending patent-licensing review (see README.md). package.json is "private" so that a stray
@@ -46,8 +46,11 @@ done
 # The root package is "type": "module"; the nodejs glue is CommonJS.
 printf '{ "type": "commonjs" }\n' >"$out/node/package.json"
 
+# THIRD-PARTY-NOTICES.md covers the whole workspace, so every crate linked into the wasm
+# module, and holds the IJG statement and licence that jpeg-encoder requires.
 cp "$crate/npm/package.json" "$crate/README.md" "$crate/LICENSE-MIT" \
-  "$crate/LICENSE-APACHE" "$crate/js/worker.js" "$crate/js/index.d.ts" "$out/"
+  "$crate/LICENSE-APACHE" "$crate/../../THIRD-PARTY-NOTICES.md" "$crate/js/worker.js" \
+  "$crate/js/index.d.ts" "$out/"
 
 wasm="$out/web/ticoraw_bg.wasm"
 raw=$(wc -c <"$wasm" | tr -d ' ')

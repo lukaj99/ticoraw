@@ -62,8 +62,12 @@ pub fn parse_options(entries: Vec<(String, OptValue)>) -> Result<Options, String
                 };
             }
             ("carryXmp", OptValue::Bool(b)) => o.carry_xmp = b,
-            ("extraXmp", OptValue::Bytes(b)) => o.extra_xmp = Some(b),
-            ("extraXmp", OptValue::Str(s)) => o.extra_xmp = Some(s.into_bytes()),
+            // Empty means no packet, as in the C API: writing it would replace the NEF's XMP
+            // with a zero-length XMLPacket entry.
+            ("extraXmp", OptValue::Bytes(b)) => o.extra_xmp = Some(b).filter(|b| !b.is_empty()),
+            ("extraXmp", OptValue::Str(s)) => {
+                o.extra_xmp = Some(s.into_bytes()).filter(|b| !b.is_empty());
+            }
             ("originalRawFileName", OptValue::Str(s)) => o.original_raw_file_name = Some(s),
             (k, v) if OPTION_KEYS.contains(&k) => {
                 let expected = match k {
@@ -238,6 +242,16 @@ mod tests {
         assert_eq!(o.extra_xmp, Some(vec![1, 2]));
         let o = parse_options(vec![("compression".into(), s("lossless-jpeg"))]).unwrap();
         assert_eq!(o.compression, Compression::LosslessJpeg);
+    }
+
+    #[test]
+    fn empty_extra_xmp_is_no_packet() {
+        // As in the C API: an empty packet keeps the NEF's XMP instead of replacing it with
+        // a zero-length XMLPacket entry.
+        for v in [s(""), OptValue::Bytes(vec![])] {
+            let o = parse_options(vec![("extraXmp".into(), v)]).unwrap();
+            assert_eq!(o, Options::default());
+        }
     }
 
     #[test]
