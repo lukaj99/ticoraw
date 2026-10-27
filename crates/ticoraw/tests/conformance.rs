@@ -31,7 +31,7 @@ const SCHEMA: i64 = 1;
 #[test]
 fn manifest_is_well_formed() {
     let m = parse_manifest(MANIFEST).unwrap_or_else(|e| panic!("conformance/manifest.toml: {e}"));
-    assert!(!m.oracle.is_empty());
+    assert_ne!(m.oracle, "");
     assert!(!m.samples.is_empty());
     for (i, s) in m.samples.iter().enumerate() {
         assert!(
@@ -483,6 +483,8 @@ impl Table {
 }
 
 fn parse_manifest(text: &str) -> Result<Manifest, String> {
+    // Tolerate CRLF checkouts (Windows git with autocrlf).
+    let text = &text.replace("\r\n", "\n");
     let mut top = Table {
         line: 1,
         entries: Vec::new(),
@@ -670,7 +672,8 @@ fn parse_int(v: &str) -> Result<i64, String> {
 #[test]
 fn manifest_parser_rejects_malformed_input() {
     let head = "schema = 1\noracle = \"x\"\n";
-    let sample = MANIFEST
+    let manifest = MANIFEST.replace("\r\n", "\n");
+    let sample = manifest
         .split("\n[[sample]]\n")
         .nth(1)
         .expect("manifest has a sample");

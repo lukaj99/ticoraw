@@ -1,0 +1,8 @@
+# Keep text files LF everywhere so include_str!-based tests and shell scripts behave the
+# same on Windows checkouts.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.dng binary
+*.nef binary
+*.NEF binary
