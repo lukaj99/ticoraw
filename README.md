@@ -1,244 +1,254 @@
 # ticoraw
 
-A clean-room Rust decoder for Nikon **High Efficiency (HE)** and **High Efficiency\*
-(HE\*)** NEF raw files.
+Convert Nikon High Efficiency (HE/HE\*) raw files to DNGs that open everywhere — free,
+private, bit-exact.
 
-In these modes Nikon cameras store the Bayer mosaic as an intoPIX **TicoRAW** codestream:
-JPEG XS (ISO/IEC 21122) entropy coding and 5/3 wavelets over four Star-Tetrix colour
-components, followed by a vendor transfer curve. `ticoraw` decodes that codestream to the
-14-bit CFA values that Adobe's converters produce, and can write them out as an
-uncompressed DNG that any raw processor opens.
+[![CI](https://github.com/lukaj99/ticoraw/actions/workflows/ci.yml/badge.svg)](https://github.com/lukaj99/ticoraw/actions/workflows/ci.yml)
+[![Conformance](https://github.com/lukaj99/ticoraw/actions/workflows/conformance.yml/badge.svg)](https://github.com/lukaj99/ticoraw/actions/workflows/conformance.yml)
+[![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue.svg)](#licence)
 
-The workspace has two crates:
+Recent Nikon Z cameras can save raw files in **High Efficiency** (HE) and **High
+Efficiency\*** (HE\*) modes. Many raw editors cannot open these files yet. `ticoraw` turns
+them into standard DNG files, on your own computer, with exactly the pixel values Adobe's
+converter produces.
 
-- [`ticoraw`](https://github.com/lukaj99/ticoraw/blob/main/crates/ticoraw): the library, a
-  pure functional core over `&[u8]` with no filesystem access and no `unsafe`;
-- [`ticoraw-cli`](https://github.com/lukaj99/ticoraw/blob/main/crates/ticoraw-cli): the
-  `ticoraw` command-line tool.
+> **Install from source for now.** Prebuilt downloads, PyPI and npm packages and a web
+> converter are planned, but they are on hold while a patent-licensing question is
+> reviewed (see the [patent notice](#patent-notice)). Building from source takes one
+> command, shown below.
 
-The format is documented in
-[docs/FORMAT.md](https://github.com/lukaj99/ticoraw/blob/main/docs/FORMAT.md).
+## Who is this for?
 
-## Status
+- **Photographers** whose editor will not open HE/HE\* files: see the
+  [quick start](#quick-start-for-photographers).
+- **Power users** who convert whole cards or script their workflow: see the
+  [command-line tool](#the-command-line-tool).
+- **Developers** who want HE/HE\* support in their own app: see the
+  [libraries](#libraries) for Rust, C, Python and JavaScript.
+- **Format experts** who build or audit decoders: see [docs/FORMAT.md](docs/FORMAT.md) and
+  the [conformance kit](conformance/README.md).
 
-| Body | Mode | Status |
-|---|---|---|
-| Nikon Z6III | HE, HE\* | **Bit-exact** against Adobe: 15 Lightroom/Topaz DNGs of 11 local HE\* NEFs, plus Adobe DNG Converter 18.7 output for public HE and HE\* (16:9) samples |
-| Nikon Z9, Z8, Zf, Z5II, Z50II | HE, HE\* | **Bit-exact** against Adobe DNG Converter 18.7 on public CC0 samples, including DX, 1:1 and 16:9 crops (see [docs/compat.md](https://github.com/lukaj99/ticoraw/blob/main/docs/compat.md)) |
-| Nikon ZR | HE\* | **Bit-exact** against Adobe DNG Converter 18.7 on a public sample (no public HE file) |
+## Quick start for photographers
 
-Of the 15 reference DNGs, 14 were written by Adobe Lightroom and one by Topaz Photo AI,
-whose CFA image is identical to Adobe's.
+You type three commands in a terminal (Terminal on macOS, PowerShell on Windows).
 
-DNG colour profiles (white level, D65 colour matrix, Adobe camera name and baseline
-exposure) are built in for all of the bodies above, and every value matches what Adobe
-writes for the same file. Other models decode, but their DNG gets an identity colour matrix
-and `ticoraw decode` warns about it.
+**1. Install Rust**, the tool that builds `ticoraw`. Follow the instructions at
+<https://rustup.rs>. On macOS and Linux that is one line:
 
-Classic NEF compression (lossless, lossy, uncompressed) is out of scope: use any existing
-raw library for those. Codestreams outside the supported profile are rejected with an
-`Unsupported` error rather than decoded wrongly.
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
 
-## Install
+On Windows, download and run `rustup-init.exe` from the same page. It tells you if it
+needs the Visual Studio C++ build tools as well. Then open a new terminal window.
 
-Prebuilt binaries are intentionally not distributed, because of JPEG XS per-copy patent
-licensing considerations (see the [patent notice](#patent-notice)). This project ships
-source code only; build it yourself with a Rust toolchain (1.85 or later).
-
-Straight from GitHub:
+**2. Install `ticoraw`.** This downloads the source code and builds it, which takes a few
+minutes the first time:
 
 ```sh
 cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
 ```
 
-From a clone:
+**3. Convert your card.** Point `ticoraw convert` at the card (or any folder) and say where
+the DNGs should go:
 
 ```sh
-git clone https://github.com/lukaj99/ticoraw
-cd ticoraw
-cargo install --path crates/ticoraw-cli
+ticoraw convert --recursive /Volumes/NIKON/DCIM -o ~/Pictures/DNG     # macOS
+ticoraw convert --recursive E:\DCIM -o C:\Photos\DNG                  # Windows
 ```
 
-Both install a binary called `ticoraw`.
+`ticoraw` keeps the card's folder structure, skips files that are not HE/HE\* (your editor
+already reads those), and never changes your originals. It prints one line per file and a
+summary at the end.
 
-As a library:
+**Then open the DNGs** in your editor. If a DNG does not open or looks wrong, please
+[tell us](https://github.com/lukaj99/ticoraw/issues/new?template=bug_report.yml).
+
+To update later, run step 2 again with `--force` at the end.
+
+## What you get
+
+Each DNG is meant to stand in for the one Adobe DNG Converter would write:
+
+- **Identical pixels.** Every photosite equals Adobe's output, on every camera listed below.
+- **Lossless.** The raw data is stored with lossless compression; nothing is thrown away.
+- **Your metadata.** The camera's EXIF (date, exposure, lens), GPS position, XMP (ratings,
+  keywords; or your Lightroom sidecar with `--with-sidecar`) and the Nikon MakerNote.
+- **Previews.** A thumbnail and a large preview (the camera's own JPEG when there is one),
+  so file browsers show the picture.
+- **Adobe's rendering metadata.** Colour matrix, white and black levels, baseline
+  exposure, default crop, orientation and Adobe's camera name, all equal to the values
+  Adobe writes, plus the camera's as-shot white balance. Because the camera name matches,
+  Lightroom and Camera Raw apply their own camera profile.
+- **About Adobe's size** (checked on a Z6III HE\* frame): 1.2 to 2.2 times the size of the
+  NEF on the public samples (see [performance](#performance)).
+
+What a DNG contains, tag by tag: [crates/ticoraw-dng/README.md](crates/ticoraw-dng/README.md).
+
+## Compatibility
+
+Every Nikon body known to write HE/HE\* is supported. Each entry was checked photosite by
+photosite against **Adobe DNG Converter 18.7**, together with the levels, colour matrix,
+baseline exposure, orientation, crop and camera name.
+
+| Body | HE | HE\* |
+|---|---|---|
+| Z 9 | Verified | Verified |
+| Z 8 | Verified | Verified |
+| Z f | Verified | Verified |
+| Z6III | Verified | Verified, plus 11 more photos against Adobe Lightroom |
+| Z 5 II | Verified (DX crop) | Verified |
+| Z 50 II | Verified (1:1 crop) | Verified |
+| ZR | No public sample yet | Verified (HLG tone mode) |
+
+The tests cover FX, DX, 1:1 and 16:9 frames. Details, sample sources and known gaps:
+[docs/compat.md](docs/compat.md). Have a body, firmware or mode that is not listed? A
+sample helps everyone: see [docs/SAMPLES.md](docs/SAMPLES.md).
+
+Classic NEF compression (lossless, lossy, uncompressed) is out of scope: almost every raw
+editor already opens those files. Codestreams outside the supported profile are rejected
+with a clear error rather than decoded wrongly.
+
+## The command-line tool
+
+| Command | What it does | Example |
+|---|---|---|
+| `convert` | Convert files or whole folders to complete DNGs | `ticoraw convert --recursive /Volumes/NIKON/DCIM -o ~/Pictures/DNG` |
+| `decode` | Convert one file, or write its raw mosaic as a 16-bit PGM | `ticoraw decode DSC_0001.NEF` |
+| `inspect` | Describe a file without decoding it | `ticoraw inspect --json DSC_0001.NEF` |
+| `verify` | Compare a decode with a reference DNG, photosite by photosite | `ticoraw verify DSC_0001.NEF DSC_0001.dng` |
+| `scan` | List the HE/HE\* and classic NEFs in a folder | `ticoraw scan --recursive ~/Pictures/import` |
+| `report` | Print a privacy-safe JSON report for a bug report | `ticoraw report DSC_0001.NEF` |
+
+Useful `convert` options: `--skip-existing` to resume, `--force` to overwrite,
+`--with-sidecar` to use Lightroom's `.xmp` sidecar, `--json` for scripts and `-j` to set
+how many files run at once. Every command explains itself with `--help`. Exit status is 0
+on success, 1 when a file failed and 2 for a usage error.
+
+The full reference, with every flag: [crates/ticoraw-cli/README.md](crates/ticoraw-cli/README.md).
+
+## Libraries
+
+All bindings share one Rust core, so they all produce the same, bit-exact output. The
+Rust, C and JavaScript libraries take bytes and return bytes; the Python package also
+accepts file paths.
+
+| Language | Where | How to get it today |
+|---|---|---|
+| Rust | [`ticoraw`](crates/ticoraw/README.md) (decoder), [`ticoraw-dng`](crates/ticoraw-dng/README.md) (DNG writer) | Git dependency; not on crates.io yet |
+| C and C++ | [`ticoraw-capi`](crates/ticoraw-capi/README.md), header `include/ticoraw.h` | Build from source with `cargo build -p ticoraw-capi --release` |
+| Python | [`crates/ticoraw-py`](crates/ticoraw-py/README.md), numpy arrays, rawpy-style names | `pip install` from a clone; PyPI wheels pending licensing review |
+| JavaScript | [`crates/ticoraw-wasm`](crates/ticoraw-wasm/README.md), WebAssembly for browsers and Node.js | Build with wasm-pack; npm package pending licensing review |
+
+In Rust:
 
 ```toml
 [dependencies]
 ticoraw = { git = "https://github.com/lukaj99/ticoraw" }
+ticoraw-dng = { git = "https://github.com/lukaj99/ticoraw" }
 ```
-
-## Command-line usage
-
-```sh
-# Print container and codestream facts without decoding pixels
-ticoraw inspect DSC_0001.NEF
-ticoraw inspect --json DSC_0001.NEF DSC_0002.NEF
-
-# Decode to an uncompressed DNG (default) or a 16-bit PGM of the raw mosaic
-ticoraw decode DSC_0001.NEF                          # writes DSC_0001.dng
-ticoraw decode DSC_0001.NEF -o out.dng
-ticoraw decode DSC_0001.NEF --format pgm -o out.pgm
-ticoraw decode DSC_0001.NEF -o out.dng --force       # overwrite an existing file
-
-# Compare a decode against a reference DNG (e.g. from Adobe DNG Converter or Lightroom)
-ticoraw verify DSC_0001.NEF DSC_0001.dng
-
-# List the NEFs in a directory with their compression; optionally decode each one
-ticoraw scan ~/Pictures/import
-ticoraw scan ~/Pictures/import --recursive --decode
-```
-
-| Command | Flags | What it does |
-|---|---|---|
-| `inspect <file.nef>...` | `--json` | For each file: camera model, raw dimensions, codec (TicoRAW or classic Nikon), MakerNote compression mode, raw strip location, black levels and, for TicoRAW strips, the codestream layout and transfer curve. `--json` prints one array with an object per file |
-| `decode <file.nef>` | `-o, --output <path>`, `--format dng\|pgm`, `-f, --force` | Decodes the mosaic and writes a DNG (default) or a PGM. The default output is the input path with a `.dng` / `.pgm` extension |
-| `verify <file.nef> <reference.dng>` | | Decodes the NEF and the DNG's full-resolution CFA image (lossless JPEG or uncompressed), then prints the mismatch count, the largest absolute difference and mismatches per 2x2 CFA site |
-| `scan <dir>` | `--decode`, `-r, --recursive` | Lists each `.nef` / `.nrw` file (any case) as TicoRAW (HE/HE\*), classic Nikon or error, then prints counts. `--decode` also decodes every TicoRAW file and reports failures and throughput |
-
-Every command takes `-h, --help`; `ticoraw -V` prints the version. Exit status is 0 on
-success, 1 on failure (for `verify`, any mismatch) and 2 on usage errors.
-
-Details worth knowing:
-
-- **DNG output** keeps the CFA pattern, black and white levels, colour matrix, as-shot
-  white balance, the NEF's `Orientation` and, when the MakerNote has one, the camera's
-  recommended crop as `DefaultCropOrigin` / `DefaultCropSize`, and Adobe's
-  `BaselineExposure` (+1 EV for HLG tone-mode frames on top of the per-body value; equal to
-  Adobe's on every ground-truth DNG). `UniqueCameraModel` carries Adobe's camera name, so
-  Lightroom and Camera Raw apply their own profile. Other raw processors use their own
-  tone curves, so their rendering can still differ from Adobe's; the CFA values are
-  identical.
-- **PGM output** is the bare mosaic as big-endian 16-bit samples (maxval 16383 for 14-bit
-  data, else 65535).
-- **Writes are atomic.** `decode` writes to a temporary file next to the output, then
-  renames it into place (`--force`) or hard-links it only if the output does not exist yet.
-  A failed write never leaves a partial file or destroys an existing one. `decode` refuses
-  to write over its own input (on Unix, also when the output is a hard link to it).
-- **`scan` only reads.** It opens regular files only, reads just the start of each file
-  (enough for the TIFF structures and the codestream header) unless `--decode` is given,
-  and with `--recursive` skips symbolic links to directories.
-
-## Library API
 
 ```rust
 let nef = std::fs::read("DSC_0001.NEF")?;
 
-// Metadata only: container fields, Nikon compression mode, codestream header.
-let info = ticoraw::inspect_nef(&nef)?;
-println!("{} {} {:?}", info.make, info.model, info.compression);
-
-// Full decode: a 6064 x 4040 RGGB mosaic of u16 plus levels, colour, orientation and crop.
+// Decode to the raw mosaic plus levels, colour, orientation and crop.
 let raw = ticoraw::decode_nef(&nef)?;
-println!("{}x{} orientation {}", raw.image.width, raw.image.height, raw.orientation);
+println!("{} {}x{}", raw.model, raw.image.width, raw.image.height);
 
-// Write it as an uncompressed DNG.
-std::fs::write("DSC_0001.dng", ticoraw::dng::encode_uncompressed_dng(&raw)?)?;
+// Or convert straight to a complete DNG.
+let dng = ticoraw_dng::convert(&nef, &ticoraw_dng::Options::default())?;
+std::fs::write("DSC_0001.dng", dng)?;
 ```
 
-| Item | Purpose |
-|---|---|
-| `inspect_nef(&[u8]) -> Result<NefInspection>` | Parse the container and codestream headers without decoding pixels |
-| `inspect_nef_prefix(prefix: &[u8], file_len: usize) -> Result<NefInspection>` | The same from just the first bytes of a file (in practice a megabyte or two); a prefix that is too short fails with `Truncated` |
-| `decode_nef(&[u8]) -> Result<DecodedRaw>` | Decode a HE/HE\* NEF: `make`, `model`, `image: CfaImage`, `color: ColorInfo`, `orientation: u16`, `crop: Option<Crop>` |
-| `decode_ticoraw(&[u8]) -> Result<CfaImage>` | Decode a bare TicoRAW codestream (SOC..EOC) |
-| `NikonCompression::{from_code, code}` | Map the MakerNote 0x0051 compression code (13 = HE, 14 = HE\*, 3 = lossless) to and from the enum |
-| `dng::encode_uncompressed_dng(&DecodedRaw) -> Result<Vec<u8>>` | Serialise a decode as an uncompressed CFA DNG |
-| `dng::decode_dng_cfa(&[u8]) -> Result<DngCfa>` | Read the CFA image of an existing DNG (lossless JPEG or uncompressed), e.g. as ground truth |
-| `dng::decode_lossless_jpeg(&[u8]) -> Result<LosslessJpeg>` | Decode one lossless JPEG (SOF3) stream to `width`, `height` and `samples` |
-| `TicoError` | Every expected failure (`Truncated`, `Container`, `Header`, `Unsupported`, `Entropy`, `Jpeg`) as a value; malformed input never panics |
-
-The crate root and `dng::{decode_dng_cfa, encode_uncompressed_dng}` are the stable API.
-The lower-level stage modules (`bitstream`, `container`, `entropy`, `header`, `mct`,
-`tiff`, `wavelet`) and `dng::decode_lossless_jpeg` are public for testing and for tools
-that want to look inside the codestream; they may change in minor releases.
-
-Hostile input is bounded before anything large is allocated, and every check failure is an
-`Err`. A crafted stream that passes the checks can decode to garbage pixels (the inverse
-transforms use wrapping arithmetic), but it cannot make the decoder panic.
-
-### Features, `no_std`-ish use and WebAssembly
-
-The `parallel` feature (on by default) decodes slices and runs the wavelet and colour
-transforms on all cores with [rayon](https://crates.io/crates/rayon). With
-`default-features = false` the crate is single-threaded and dependency-free. It still uses
-`std` for `Vec` and `String`, but never touches the filesystem, threads or the clock, so it
-builds for `wasm32-unknown-unknown`:
-
-```toml
-ticoraw = { git = "https://github.com/lukaj99/ticoraw", default-features = false }
-```
-
-```sh
-cargo build -p ticoraw --no-default-features --target wasm32-unknown-unknown
-```
+The decoder has no `unsafe` code and no dependencies without its `parallel` feature, and it
+builds for `wasm32-unknown-unknown`. Malformed input returns an error; it never panics.
 
 ## Performance
 
-About **45 ms per 24.5 MP frame** on Apple Silicon with the `parallel` feature, in a
-release build. Decoding is multi-threaded across the 64 slices of a frame, then across rows
-for the wavelet and colour stages.
+Measured on an Apple M5 Pro (15 cores), release build:
 
-## Testing
+| Task | Time |
+|---|---|
+| Decode one 24.5 MP frame (Z6III), all cores | about 30 to 35 ms |
+| Decode the same frame, one core | about 285 ms |
+| Decode and write a complete DNG of that frame, including file I/O | about 75 ms |
+| `ticoraw convert` on the 13 public samples (251 MB of NEFs, 11 to 46 MP each) | 0.7 to 0.8 s: 14 to 19 files per second |
 
-```sh
-cargo test --release
-```
+| Sample | NEF | DNG |
+|---|---|---|
+| Z6III HE, 24.5 MP | 13.4 MB | 28.4 MB |
+| Z 9 HE\*, 45.7 MP | 35.6 MB | 46.7 MB |
+| ZR HE\*, 24.5 MP | 15.8 MB | 19.0 MB |
+| All 13 samples | 250.8 MB | 405.1 MB |
 
-runs the unit tests (bit reader, header and transfer-curve vectors, wavelet perfect
-reconstruction, Star-Tetrix invariants, DNG round trip), synthetic encoder round trips and
-robustness tests on corrupted input. None of them needs camera files.
+HE files grow more than HE\* files: the camera stores HE at a lower bit rate, but a
+lossless DNG stores the full decoded image, which is about the same size in both modes. A Z6III HE\* frame comes out at about the
+size of Adobe's own DNG. In a browser or Node.js, the WebAssembly build converts a 24.5 MP
+frame in about 0.6 s on one thread
+([details](crates/ticoraw-wasm/README.md#performance-and-size)).
 
-### Ground-truth suite
+## How it is verified
 
-The bit-exactness claim is checked against pairs of NEFs and DNGs converted from them. The
-suite is gated on an environment variable and is skipped when it is unset:
+- **Ground truth.** Real NEFs are compared with DNGs that Adobe DNG Converter and
+  Lightroom wrote from them, at every photosite. Adobe tools are used only as black boxes.
+  The suite runs whenever `TICORAW_CORPUS` names a folder of pairs
+  ([CONTRIBUTING.md](CONTRIBUTING.md#running-the-tests)).
+- **Conformance kit.** [conformance/](conformance/README.md) pins 13 public CC0 samples
+  and the Adobe-verified hash of each decoded image. CI checks them on every pull request
+  and downloads them afresh every week. Other decoders can use the same kit.
+- **Fuzzing.** Nine [cargo-fuzz targets](fuzz/README.md) run every night against the
+  container, codestream, DNG and lossless JPEG parsers.
+- **Benchmarks.** [Criterion benchmarks](crates/ticoraw/benches/decode.rs) measure speed,
+  and an instruction-count gate fails any pull request that makes decoding execute more
+  than 5% more instructions ([bench.yml](.github/workflows/bench.yml)).
+- **Supply chain.** [cargo-deny](deny.toml) checks advisories, licences and sources.
 
-```sh
-TICORAW_CORPUS=/path/to/folder cargo test --release
-```
+## Documentation
 
-The suite discovers pairs on its own: every DNG in the folder whose `OriginalRawFileName`
-tag (0xC68B) names a TicoRAW NEF in the same folder is decoded and compared. DNGs whose
-NEF is missing or not HE/HE\* are skipped. Each pair must agree at every photosite, and the
-CFA pattern and black and white levels `decode_nef` reports must match the ones the DNG
-declares. The
-folder is only read, never written. You can check a single pair with
-`ticoraw verify <nef> <dng>`.
+- The documentation website, <https://lukaj99.github.io/ticoraw/>, is published from the
+  `book/` folder of this repository: guides for each kind of user.
+- [docs/FORMAT.md](docs/FORMAT.md): the HE/HE\* format, fully written up.
+- [docs/compat.md](docs/compat.md): cameras, samples and how they were checked.
+- [docs/superpowers/specs/2026-10-27-ticoraw-design.md](docs/superpowers/specs/2026-10-27-ticoraw-design.md):
+  how the code is organised and why.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each version.
 
 ## Patent notice
 
 **Please read this before using or distributing this software.**
 
-- JPEG XS (ISO/IEC 21122) is covered by essential patents. A patent pool for JPEG XS is
-  administered by Vectis IP (<https://www.jpegxspool.com/>), with Fraunhofer-Gesellschaft
-  and intoPIX among the licensors.
+- JPEG XS (ISO/IEC 21122), the codec inside HE/HE\* files, is covered by essential
+  patents. A patent pool for JPEG XS is administered by Vectis IP
+  (<https://www.jpegxspool.com/>), with Fraunhofer-Gesellschaft and intoPIX among the
+  licensors.
 - intoPIX describes TicoRAW as patented technology and holds patents on it.
-- This project provides **source code** for interoperability and research purposes: so that
-  photographers can read their own raw files and so that the format is documented. It does
-  not grant, and cannot grant, any patent licence. The MIT and Apache-2.0 licences of this
-  project cover its copyright only.
-- For this reason the project does not distribute compiled binaries.
+- This project provides **source code** for interoperability and research purposes: so
+  that photographers can read their own raw files and so that the format is documented.
+  It does not grant, and cannot grant, any patent licence. The MIT and Apache-2.0 licences
+  of this project cover its copyright only.
+- For this reason the project does not distribute compiled decoders today: no prebuilt
+  binaries, Python wheels, npm packages or hosted web converter. These are on hold pending
+  a patent-licensing review, and may follow if that review allows it. The release
+  workflows build and test them but publish nothing compiled
+  ([packaging/README.md](packaging/README.md#the-patent-gate)).
 - **You are responsible** for determining whether you need a patent licence to use,
   build, or distribute this software or binaries made from it in your jurisdiction, and
   for obtaining one if so.
 - This notice is not legal advice.
 
-## Licence
+## Contributing and getting help
 
-Licensed under either of
+Contributions of every size are welcome, and you do not need to know anything about
+wavelets to start. [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the tests and the
+bit-exact rule.
 
-- Apache License, Version 2.0
-  ([LICENSE-APACHE](https://github.com/lukaj99/ticoraw/blob/main/LICENSE-APACHE) or
-  <http://www.apache.org/licenses/LICENSE-2.0>)
-- MIT licence ([LICENSE-MIT](https://github.com/lukaj99/ticoraw/blob/main/LICENSE-MIT) or
-  <http://opensource.org/licenses/MIT>)
-
-at your option.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for
-inclusion in the work by you, as defined in the Apache-2.0 licence, shall be dual licensed
-as above, without any additional terms or conditions.
+- Questions and help: [SUPPORT.md](SUPPORT.md) and
+  [Discussions](https://github.com/lukaj99/ticoraw/discussions).
+- Bugs, camera support and ideas: the
+  [issue forms](https://github.com/lukaj99/ticoraw/issues/new/choose). For a file that
+  misbehaves, paste the output of `ticoraw report <file>`; it contains nothing personal.
+- Security problems: privately, as described in [SECURITY.md](SECURITY.md).
+- Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Acknowledgements
 
@@ -253,11 +263,27 @@ of:
 - **darktable PR #22743** (<https://github.com/darktable-org/darktable/pull/22743>);
 - **dnglab PR #835** (<https://github.com/dnglab/dnglab/pull/835>);
 - Richter, Fößel, Descampe and Rouvroy, "Bayer CFA Pattern Compression With JPEG XS",
-  IEEE TIP 30 (2021), <https://doi.org/10.1109/TIP.2021.3095421>.
+  IEEE TIP 30 (2021), <https://doi.org/10.1109/TIP.2021.3095421>;
+- the photographers who published CC0 samples on [raw.pixls.us](https://raw.pixls.us/)
+  and [RawDB](https://rawdb.dnglab.org/).
 
-See
-[docs/FORMAT.md](https://github.com/lukaj99/ticoraw/blob/main/docs/FORMAT.md#21-sources-and-acknowledgements)
-for what each contributed.
+[docs/FORMAT.md](docs/FORMAT.md#21-sources-and-acknowledgements) says what each
+contributed.
+
+## Licence
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT licence ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option. Third-party licences are listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for
+inclusion in the work by you, as defined in the Apache-2.0 licence, shall be dual licensed
+as above, without any additional terms or conditions.
 
 ## Trademarks
 

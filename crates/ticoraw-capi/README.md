@@ -32,10 +32,11 @@ JPEG XS, which TicoRAW codestreams use, is covered by essential patents; see the
 libraries, packages or release assets. Build the library yourself from source; whether you
 need a patent licence to build, use or distribute it is your responsibility.
 
-The CI workflow (`.github/workflows/capi.yml`) builds and tests the library and keeps the
-results as short-lived workflow artifacts only. Any future publish, deploy or release-asset
-step must be guarded by both a manual `workflow_dispatch` input and the repository variable
-`ALLOW_BINARY_DISTRIBUTION == 'true'`, which is unset.
+The CI workflow (`.github/workflows/capi.yml`) builds and tests the library on Linux,
+macOS and Windows, but uploads nothing compiled: its workflow-artifact upload runs only
+when the repository variable `ALLOW_BINARY_DISTRIBUTION` is `'true'`, which it is not. Any
+future publish, deploy or release-asset step must be guarded by both a manual
+`workflow_dispatch` input and that variable.
 
 ## Building
 

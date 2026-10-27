@@ -40,6 +40,8 @@ Adobe writes WhiteLevel 15892 for every one of these files, and its D65 ColorMat
 
 All samples are CC0 1.0. Each was downloaded from the source URL and its SHA-256 matched the checksum the archive publishes. None are stored in this repository.
 
+The canonical list is [`conformance/manifest.toml`](../conformance/manifest.toml): it pins each sample's download URL and SHA-256, and the expected output of a correct decoder (the SHA-256 of the decoded mosaic, levels, `BaselineExposure`, orientation, crop and camera name), all verified against Adobe DNG Converter 18.7. Those hashes are the regression reference; CI checks every decode against them ([conformance/README.md](../conformance/README.md)). `conformance/fetch.sh` downloads the samples and checks their SHA-256.
+
 The archive's "Mode" column labels every one of these files "8bit compressed", which is wrong. The HE/HE\* split below comes from three sources:
 - The MakerNote 0x0051 compression code: 13 = HE, 14 = HE\*.
 - The constant strip rate: HE is 3.000 bpp and HE\* is 5.000 bpp.
@@ -59,7 +61,7 @@ The archive's "Mode" column labels every one of these files "8bit compressed", w
 | 10 | NIKON Z5_2 | 01.00 | HE\* | FX | 6064x4040 | 15,311,360 | [raw.pixls.us 7743](https://raw.pixls.us/getfile.php/7743/nice/Nikon%20-%20Z5_2%20-%208bit%20compressed%20(3:2).NEF) | `b44bb31787098631a396b553454a8ebf960766d9b538521ce9852896bd6df3a8` |
 | 11 | NIKON Z50_2 | 01.00 | HE | 1:1 | 3728x3728 | 5,211,648 | [raw.pixls.us 7767](https://raw.pixls.us/getfile.php/7767/nice/Nikon%20-%20Z50_2%20-%208bit%20compressed%20(1:1).NEF) | `99b2a569356fb084d6946fa6e0b501b014e6e004be0a8e8d564a7b9dab91857e` |
 | 12 | NIKON Z50_2 | 01.00 | HE\* | DX | 5600x3728 | 13,047,808 | [raw.pixls.us 7763](https://raw.pixls.us/getfile.php/7763/nice/Nikon%20-%20Z50_2%20-%208bit%20compressed%20(3:2).NEF) | `0add1dad5776669a4896640de31b128032f893e13418f6569da7a4744a05ed42` |
-| 13 | NIKON ZR | 01.01 | HE\* | FX | 6064x4040 | 15,311,360 | [RawDB Nikon/ZR](https://rawdb.dnglab.org/sets/Nikon/ZR), `he_modes/NIKON ZR_ISO_800_14bits_High Efficiency*.NRW` | `cfb4e5daa71e4590dba01b3753c9043a864726b0994ab216c1401bf80ed85322` |
+| 13 | NIKON ZR | 01.01 | HE\* | FX | 6064x4040 | 15,311,360 | [RawDB Nikon/ZR](https://rawdb.dnglab.org/sets/Nikon/ZR), [`he_modes/NIKON ZR_ISO_800_14bits_High Efficiency*.NRW`](https://rawdb.dnglab.org/api/download/Nikon/ZR/he_modes/NIKON%20ZR_ISO_800_14bits_High%20Efficiency%2A.NRW) | `cfb4e5daa71e4590dba01b3753c9043a864726b0994ab216c1401bf80ed85322` |
 
 Notes:
 - The archive listings are https://raw.pixls.us/ and https://rawdb.dnglab.org/. RawDB mirrors the Z 5 II and Z 50 II sets under mode-labelled names (`he_mode/Z5_II_High_Efficiency_DX.NEF` and so on).
@@ -85,7 +87,7 @@ A scratch crate outside the repository depends on `ticoraw` by path and runs the
    - Vertical same-colour differences for pairs crossing a precinct boundary (4 CFA rows) and a slice boundary (`4 * Hsl` CFA rows), relative to pairs inside a precinct. A ratio near 1.0 means no seams.
    - Edge rows and columns.
    - A white-balanced, gamma-encoded preview PNG, which was checked by eye.
-   - An FNV-1a-64 hash of the CFA output (u16 LE, row-major) for future regression checks.
+   - An FNV-1a-64 hash of the CFA output (u16 LE, row-major). These hashes predate the conformance kit; the SHA-256 values in [`conformance/manifest.toml`](../conformance/manifest.toml) are the canonical regression hashes.
 
 The method was calibrated on a local Z6III HE\* frame that is bit-exact against Adobe:
 - Neighbour ratio 0.0109.
@@ -143,4 +145,4 @@ Observations that settle two formerly open questions, for the bodies seen so far
    - N-RAW (`.NEV`) video frames reportedly use the same TicoRAW codestream at video resolutions (github.com/hayamdk/nev2nef). They are untested.
    - No HE file from a Z 9 or Z 8 on later firmware was available.
 4. **Raw GCLI mode is unexercised by cameras.** No file contains Dr = 1 packets. The decoder reads raw GCLIs at the PIH `Br` width (4 in every file seen); the synthetic test suite covers this path.
-5. **`.NRW` extension.** The ZR HE\* samples on RawDB use the `.NRW` extension; `ticoraw scan` accepts `.nef` and `.nrw` in any case.
+5. **`.NRW` extension.** The ZR HE\* samples on RawDB use the `.NRW` extension; `ticoraw scan` and `ticoraw convert` accept `.nef` and `.nrw` in any case.

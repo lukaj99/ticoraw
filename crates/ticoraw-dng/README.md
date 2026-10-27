@@ -33,8 +33,9 @@ verbatim fields stay valid.
 
 ### Previews
 
-- **SDR frames** embed full-size JPEG previews. The largest one (with a long side of at
-  least 1024 pixels) is copied unchanged: no cost, and it shows the camera's rendering.
+- **SDR frames** embed JPEG previews of several sizes. The smallest one with a long side
+  of at least 1024 pixels (the camera's mid-size preview) is copied unchanged: no cost, it
+  shows the camera's rendering, and it keeps the DNG near Adobe's size.
 - **HLG frames** only embed 10-bit HEVC previews, which DNG cannot carry. For them the
   preview is rendered from the raw data at half size: each 2x2 CFA cell becomes one pixel
   (no demosaic), white balanced with `AsShotNeutral`, converted to sRGB through the inverse

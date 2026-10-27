@@ -86,7 +86,7 @@ the same, so code written for rawpy mostly carries over:
 |---|---|
 | `ticoraw.read(source) -> RawImage` | Decode a NEF |
 | `ticoraw.inspect(source) -> dict` | Camera, size, compression mode and codestream facts, without decoding pixels |
-| `ticoraw.to_dng(source, dest=None, *, compression="lossless", preview=True, xmp=None)` | Write a DNG to `dest`, or return it as `bytes` when `dest` is `None`. `compression="uncompressed"` writes one plain 16-bit strip; `preview=False` skips the full-size preview; `xmp` (`str` or `bytes`) replaces the NEF's XMP packet, for example with a sidecar |
+| `ticoraw.to_dng(source, dest=None, *, compression="lossless", preview=True, xmp=None)` | Write a DNG to `dest`, or return it as `bytes` when `dest` is `None`. `compression="uncompressed"` writes one plain 16-bit strip; `preview=False` skips the preview (the thumbnail stays); `xmp` (`str` or `bytes`) replaces the NEF's XMP packet, for example with a sidecar |
 
 `source` is a path (`str` or `os.PathLike`) or the file's contents (`bytes` or `bytearray`).
 The GIL is released while files are read, decoded and written, so threads run in parallel.
@@ -127,10 +127,12 @@ The tests need no camera files. Two environment variables add real decodes:
 
 This crate is its own Cargo workspace (like `fuzz/`), so the main workspace builds and
 tests without Python. CI (`.github/workflows/python.yml`) builds abi3 wheels for Linux
-(manylinux x86_64, aarch64), macOS (arm64, x86_64) and Windows (x64), tests each one, and
-keeps them only as short-lived workflow artifacts. Its PyPI publish job is gated, pending
-patent-licensing review: it runs only from a manual run with `publish` ticked **and** with
-the repository variable `ALLOW_BINARY_DISTRIBUTION` set to `true`, which it is not.
+(manylinux x86_64, aarch64), macOS (arm64, x86_64) and Windows (x64) and tests each one on
+its own platform, but uploads no wheel while the repository variable
+`ALLOW_BINARY_DISTRIBUTION` is unset (only the source distribution is kept as a workflow
+artifact). Its PyPI publish job is gated, pending patent-licensing review: it runs only
+from a manual run with `publish` ticked **and** with `ALLOW_BINARY_DISTRIBUTION` set to
+`true`, which it is not.
 
 ## Patent notice
 
