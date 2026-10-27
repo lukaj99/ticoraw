@@ -39,6 +39,9 @@ jobs:
           - { target: ljpeg_roundtrip, dict: "", max_len: 4096 }
     env:
       TARGET: ${{ matrix.target }}
+      # The prebuilt cargo-fuzz is a musl binary and defaults to its own triple, which
+      # AddressSanitizer cannot instrument; pin the glibc target.
+      FUZZ_TRIPLE: x86_64-unknown-linux-gnu
       DICT: ${{ matrix.dict }}
       MAX_LEN: ${{ matrix.max_len }}
       SECONDS_PER_TARGET: ${{ inputs.seconds || '600' }}
@@ -61,7 +64,7 @@ jobs:
           restore-keys: fuzz-corpus-${{ matrix.target }}-
 
       - name: Build
-        run: cargo fuzz build --fuzz-dir fuzz -a "$TARGET"
+        run: cargo fuzz build --fuzz-dir fuzz --target "$FUZZ_TRIPLE" -a "$TARGET"
 
       - name: Add synthetic seeds
         run: cargo run --release --manifest-path fuzz/Cargo.toml --example gen_seeds -- fuzz/corpus
@@ -71,7 +74,7 @@ jobs:
           dir="fuzz/artifacts-regressions/$TARGET"
           if [ -d "$dir" ] && [ -n "$(ls -A "$dir")" ]; then
             # Given files rather than a corpus directory, libFuzzer runs each one once.
-            cargo fuzz run --fuzz-dir fuzz -a "$TARGET" "$dir"/* -- -timeout=10 -rss_limit_mb=2048
+            cargo fuzz run --fuzz-dir fuzz --target "$FUZZ_TRIPLE" -a "$TARGET" "$dir"/* -- -timeout=10 -rss_limit_mb=2048
           else
             echo "no reproducers for $TARGET"
           fi
@@ -84,11 +87,11 @@ jobs:
           set -- -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -rss_limit_mb=2048 \
             -max_len="$MAX_LEN" -print_final_stats=1
           if [ -n "$DICT" ]; then set -- "$@" -dict="fuzz/dict/$DICT.dict"; fi
-          cargo fuzz run --fuzz-dir fuzz -a "$TARGET" "fuzz/corpus/$TARGET" -- "$@"
+          cargo fuzz run --fuzz-dir fuzz --target "$FUZZ_TRIPLE" -a "$TARGET" "fuzz/corpus/$TARGET" -- "$@"
 
       - name: Minimise corpus
         if: success()
-        run: cargo fuzz cmin --fuzz-dir fuzz -a "$TARGET" "fuzz/corpus/$TARGET"
+        run: cargo fuzz cmin --fuzz-dir fuzz --target "$FUZZ_TRIPLE" -a "$TARGET" "fuzz/corpus/$TARGET"
 
       - name: Save corpus
         if: always()
