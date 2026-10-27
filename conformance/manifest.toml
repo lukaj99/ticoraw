@@ -1,0 +1,291 @@
+# ticoraw conformance manifest: public CC0 Nikon HE/HE* samples and the output a correct
+# decoder must produce for each. See README.md in this directory.
+#
+# Format: a deliberately small TOML subset, so that any TOML library and the hand-written
+# readers in fetch.sh and crates/ticoraw/tests/conformance.rs all read it the same way:
+#   - top-level `key = value` lines, then one `[[sample]]` table per sample;
+#   - values are basic strings without escapes, decimal integers, decimals, or one-line
+#     arrays of integers;
+#   - `#` starts a comment outside strings; one key per line.
+#
+# Expected values per sample:
+#   nef_sha256          SHA-256 of the sample file as downloaded from `url`
+#   nef_bytes           its size in bytes
+#   width, height       CFA mosaic size in photosites (the whole raw IFD, no crop)
+#   cfa_sha256          SHA-256 of the decoded mosaic: every sample as a little-endian u16,
+#                       row-major, width * height * 2 bytes
+#   cfa_pattern         2x2 CFA pattern, row-major
+#   black_level         per 2x2 CFA position, row-major
+#   white_level         saturation level
+#   baseline_exposure   DNG BaselineExposure, EV
+#   orientation         TIFF Orientation
+#   crop                DNG DefaultCropOrigin and DefaultCropSize: [x, y, width, height]
+#   unique_camera_model DNG UniqueCameraModel (the name Adobe uses for the body)
+#
+# "Adobe-verified": every cfa_sha256 below is also the SHA-256 of the CFA image in the DNG
+# that `oracle` wrote from the same file, and every other expected value equals the tag
+# that DNG carries. Adobe's DNGs are not distributed.
+
+schema = 1
+oracle = "Adobe DNG Converter 18.7 (build 2743), options -u -p0"
+
+[[sample]]
+id = "z9_he"
+body = "NIKON Z 9"
+mode = "HE"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/5148/nice/Nikon%20-%20Z%209%20-%208bit%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "be91bac25573adf7ec6320a542105d87b4fb9c956d7b620ec90d57ac2ae6c3f0"
+nef_bytes = 24839168
+width = 8280
+height = 5520
+cfa_sha256 = "d6540f56eed3c5ea46425be9823591289e6461aeb0f8824a2c9342182c768206"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [12, 8, 8256, 5504]
+unique_camera_model = "Nikon Z 9"
+
+[[sample]]
+id = "z9_hestar"
+body = "NIKON Z 9"
+mode = "HE*"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/5147/nice/Nikon%20-%20Z%209%20-%208bit%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "e113deb305d84153b26251ce259d1f839be1f36b048cbe83a4548cbda806c0f5"
+nef_bytes = 35592704
+width = 8280
+height = 5520
+cfa_sha256 = "4fe6c59e56b3b9b148d6a06e3542b19be78b14e82e6df9ce7eef62ca4a97abfa"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [12, 8, 8256, 5504]
+unique_camera_model = "Nikon Z 9"
+
+[[sample]]
+id = "z8_he"
+body = "NIKON Z 8"
+mode = "HE"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/6616/nice/Nikon%20-%20Z%208%20-%208bit%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "82df041542b8d328738443bb5ff3373b396e406ecc8cbe7dc3b35252790c53e7"
+nef_bytes = 24384512
+width = 8280
+height = 5520
+cfa_sha256 = "a273a25f3b3f99be4c4ded39a8c8646464b92d29e98ceffcb47a4e0dd7b46ae1"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [12, 8, 8256, 5504]
+unique_camera_model = "Nikon Z 8"
+
+[[sample]]
+id = "z8_hestar"
+body = "NIKON Z 8"
+mode = "HE*"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/6618/nice/Nikon%20-%20Z%208%20-%208bit%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "ea8b093cd11c946c5eeb501b775859e8e617ce1d79577abc41b233c339e4004c"
+nef_bytes = 35744768
+width = 8280
+height = 5520
+cfa_sha256 = "e4c31118fad3aa09ecf221fdaf1e9e3cb5c9a58e9a6859b902af8ac704bc8ab4"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [12, 8, 8256, 5504]
+unique_camera_model = "Nikon Z 8"
+
+[[sample]]
+id = "zf_he"
+body = "NIKON Z f"
+mode = "HE"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/6887/nice/Nikon%20-%20Z%20f%20-%208bit%208bit%20lossy%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "98d6ca8e6c98048ca7ffed68ccaeda7b2b9f03807f0d320d97d5678db21748c2"
+nef_bytes = 13462016
+width = 6064
+height = 4040
+cfa_sha256 = "e42a53f4278285e97525d32f806cf2d273608c59fc0d5114b6bf5cf3e1b17764"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [8, 4, 6048, 4032]
+unique_camera_model = "Nikon Z f"
+
+[[sample]]
+id = "zf_hestar"
+body = "NIKON Z f"
+mode = "HE*"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/6886/nice/Nikon%20-%20Z%20f%20-%208bit%208bit%20lossy%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "c888f109dc420e359853a2ce768d8a6274b8ba0109b2f5cb6e0c982981d5a624"
+nef_bytes = 19627008
+width = 6064
+height = 4040
+cfa_sha256 = "27a14dec4a9003383e0fd54d3d782b56f64281b493632b199cf552cbc37b3316"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [8, 4, 6048, 4032]
+unique_camera_model = "Nikon Z f"
+
+[[sample]]
+id = "z6iii_he"
+body = "NIKON Z6_3"
+mode = "HE"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/7811/nice/Nikon%20-%20Z6_3%20-%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "9ae7346adb3b16f011d1d3c11b4c7ae2ab0231c64111dff3fad8e28dd55353c8"
+nef_bytes = 13429248
+width = 6064
+height = 4040
+cfa_sha256 = "86129de7c4038a647ea70ce75bceeda057a1bd979cbac204111a9a3c4b77a964"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.25
+orientation = 1
+crop = [8, 4, 6048, 4032]
+unique_camera_model = "Nikon Z 6 3"
+
+[[sample]]
+id = "z6iii_hestar_16x9"
+body = "NIKON Z6_3"
+mode = "HE*"
+frame = "16:9"
+url = "https://raw.pixls.us/getfile.php/7813/nice/Nikon%20-%20Z6_3%20-%208bit%20compressed%20(16:9).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "b84499212126ef8bab31aa2b150f6dbf8cb6e0e2aab7ca669d85c3259784ecc5"
+nef_bytes = 16825344
+width = 6064
+height = 3416
+cfa_sha256 = "d5a5380e2b22bf5f2765d7fa5c478342dd323dc0aeaedfca8ddb776d718649e3"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.25
+orientation = 1
+crop = [8, 8, 6048, 3400]
+unique_camera_model = "Nikon Z 6 3"
+
+[[sample]]
+id = "z5ii_he_dx"
+body = "NIKON Z5_2"
+mode = "HE"
+frame = "DX"
+url = "https://raw.pixls.us/getfile.php/7737/nice/Nikon%20-%20Z5_2%20-%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "196971ea960cfa6f5c0a19cebe515ac118e079c57ceeef850ab3a4995dc7d20f"
+nef_bytes = 6174720
+width = 4000
+height = 2672
+cfa_sha256 = "090d6e66ca9b65997120b129492f07fd977b2948e6a8d501c79e89c1dd43c0a2"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [8, 8, 3984, 2656]
+unique_camera_model = "Nikon Z 5 2"
+
+[[sample]]
+id = "z5ii_hestar"
+body = "NIKON Z5_2"
+mode = "HE*"
+frame = "FX"
+url = "https://raw.pixls.us/getfile.php/7743/nice/Nikon%20-%20Z5_2%20-%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "b44bb31787098631a396b553454a8ebf960766d9b538521ce9852896bd6df3a8"
+nef_bytes = 18844160
+width = 6064
+height = 4040
+cfa_sha256 = "2e0248af6a801d2586d0089b69836dd00b8059dae01d75c41ae5e4e37f4a6804"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.20
+orientation = 1
+crop = [8, 4, 6048, 4032]
+unique_camera_model = "Nikon Z 5 2"
+
+[[sample]]
+id = "z50ii_he_1x1"
+body = "NIKON Z50_2"
+mode = "HE"
+frame = "1:1"
+url = "https://raw.pixls.us/getfile.php/7767/nice/Nikon%20-%20Z50_2%20-%208bit%20compressed%20(1:1).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "99b2a569356fb084d6946fa6e0b501b014e6e004be0a8e8d564a7b9dab91857e"
+nef_bytes = 8443392
+width = 3728
+height = 3728
+cfa_sha256 = "da094caa3aca1da0920e4134a76f761445423090bcc9a965f8fb9032a077a56f"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.25
+orientation = 1
+crop = [8, 8, 3712, 3712]
+unique_camera_model = "Nikon Z 50 2"
+
+[[sample]]
+id = "z50ii_hestar"
+body = "NIKON Z50_2"
+mode = "HE*"
+frame = "DX"
+url = "https://raw.pixls.us/getfile.php/7763/nice/Nikon%20-%20Z50_2%20-%208bit%20compressed%20(3:2).NEF"
+licence = "CC0-1.0"
+nef_sha256 = "0add1dad5776669a4896640de31b128032f893e13418f6569da7a4744a05ed42"
+nef_bytes = 17646080
+width = 5600
+height = 3728
+cfa_sha256 = "9c73b6e0be35e9d0951470e35ec3962f7ccd6627d3fba301ea32ca80ef5430f7"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 0.25
+orientation = 1
+crop = [16, 8, 5568, 3712]
+unique_camera_model = "Nikon Z 50 2"
+
+# HLG tone mode: Adobe adds one stop to the body's +0.25 EV. Shot in portrait (Orientation 8).
+[[sample]]
+id = "zr_hestar"
+body = "NIKON ZR"
+mode = "HE*"
+frame = "FX"
+url = "https://rawdb.dnglab.org/api/download/Nikon/ZR/he_modes/NIKON%20ZR_ISO_800_14bits_High%20Efficiency%2A.NRW"
+licence = "CC0-1.0"
+nef_sha256 = "cfb4e5daa71e4590dba01b3753c9043a864726b0994ab216c1401bf80ed85322"
+nef_bytes = 15804416
+width = 6064
+height = 4040
+cfa_sha256 = "31cab346fc094045fdd97a977071c63afdfdd0cf7d01e2aa72fb87c701cfd929"
+cfa_pattern = "RGGB"
+black_level = [1008, 1008, 1008, 1008]
+white_level = 15892
+baseline_exposure = 1.25
+orientation = 8
+crop = [8, 4, 6048, 4032]
+unique_camera_model = "Nikon ZR"

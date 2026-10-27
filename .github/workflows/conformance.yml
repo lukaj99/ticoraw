@@ -1,0 +1,51 @@
+name: Conformance
+
+# Decodes the public CC0 samples in conformance/manifest.toml and checks every output against
+# the pinned, Adobe-verified values. Pushes and pull requests reuse a cached copy of the
+# samples; the weekly run downloads them afresh so upstream changes or outages show up.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 5 * * 1" # Mondays 05:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  conformance:
+    name: public samples
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Restore samples
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/conformance-samples
+          key: conformance-samples-${{ hashFiles('conformance/manifest.toml') }}
+          # A manifest change reuses the files it still lists; fetch.sh re-verifies them.
+          restore-keys: conformance-samples-
+
+      - name: Fetch samples
+        run: sh conformance/fetch.sh "$RUNNER_TEMP/conformance-samples"
+
+      - name: Conformance test
+        env:
+          TICORAW_CONFORMANCE_DIR: ${{ runner.temp }}/conformance-samples
+        run: cargo test -p ticoraw --release --test conformance -- --nocapture
