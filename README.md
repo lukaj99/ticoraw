@@ -30,17 +30,37 @@ converter produces.
 
 ## Quick start for photographers
 
-You type three commands in a terminal (Terminal on macOS, PowerShell on Windows).
+You type a few commands in a terminal (Terminal on macOS, PowerShell on Windows). The
+[step-by-step install guide](https://lukaj99.github.io/ticoraw/photographers/install.html)
+walks through each one and says what you should see.
 
-**1. Install Rust**, the tool that builds `ticoraw`. Follow the instructions at
-<https://rustup.rs>. On macOS and Linux that is one line:
+**1. Install Rust**, the tool that builds `ticoraw`, and the system tools it needs to link
+programs:
 
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+- **macOS:** first install Apple's command line tools, then Rust:
 
-On Windows, download and run `rustup-init.exe` from the same page. It tells you if it
-needs the Visual Studio C++ build tools as well. Then open a new terminal window.
+  ```sh
+  xcode-select --install
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+
+  `xcode-select` opens a dialog: click **Install** and wait. If it says the tools are
+  already installed, go on.
+- **Linux:** first install a C compiler (and curl) with your package manager, then Rust:
+
+  ```sh
+  sudo apt install build-essential curl        # Debian, Ubuntu, Mint
+  sudo dnf install gcc curl                    # Fedora
+  sudo pacman -S --needed base-devel curl      # Arch, Manjaro
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+
+- **Windows:** download and run `rustup-init.exe` from <https://rustup.rs>. If it says you
+  need the **Visual Studio C++ Build Tools** (Microsoft's C++ compiler, MSVC), let it
+  install them with the **Desktop development with C++** workload.
+
+Choose the default installation when `rustup` asks. Then **close the terminal and open a
+new one**, so that it finds `cargo`. `cargo --version` should print 1.85 or higher.
 
 **2. Install `ticoraw`.** This downloads the source code and builds it, which takes a few
 minutes the first time:

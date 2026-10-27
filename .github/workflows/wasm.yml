@@ -3,7 +3,9 @@ name: WebAssembly
 # Builds the `ticoraw` npm package (crates/ticoraw-wasm: wasm-bindgen, targets web and
 # nodejs, plus the Web Worker pool) and tests it in Node.js: the wasm-bindgen tests, the
 # public conformance samples (CFA SHA-256 of every decode and of every toDng round trip) and
-# the worker pool. The package is kept as a workflow artifact only.
+# the worker pool. The package is uploaded as a workflow artifact ONLY when the repository
+# variable ALLOW_BINARY_DISTRIBUTION is 'true' (any signed-in user can download the
+# artifacts of a public repository); otherwise it never leaves the runner.
 #
 # PATENT GATE: compiled decoders (binaries, wheels, npm packages, hosted web apps) are NOT
 # published, pending patent-licensing review (JPEG XS is licensed per decoder copy through

@@ -98,12 +98,79 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The conformance test reads `manifest.toml` correctly from a checkout with CRLF line
   endings (Windows), and `.gitattributes` now keeps text files LF everywhere.
+- `ticoraw convert` reports a classic NEF next to an existing DNG as skipped (classic),
+  not as FAILED with exit status 1: files are classified before the existing-output
+  policy applies.
+- An interrupted `ticoraw convert` or `decode` (Ctrl-C) no longer leaves half-written DNG
+  temporary files behind.
+- The `convert` progress line takes its width from the terminal itself rather than only
+  from `$COLUMNS`, which shells do not export, so it no longer wraps and leaves stale
+  lines on narrow terminals.
+- The default for `-j/--jobs` (at most one file per 2 GB of memory) now matches what the
+  CLI does on Windows too.
+- Python: `ticoraw.to_dng(source, dest)` writes to a temporary file and renames it over
+  `dest`, so a failed write no longer destroys an existing DNG.
+- Python and WebAssembly: an empty `xmp` is treated as no replacement, as in the C API,
+  instead of writing an empty XMP packet and dropping the NEF's own XMP.
+- WebAssembly: `decode`, `toDng` and `inspect` given an `ArrayBuffer` instead of a
+  `Uint8Array` no longer decode an empty slice and report a misleading `Truncated` error.
+- WebAssembly: `TicorawWorker` rejects a job whose options cannot be structured-cloned,
+  instead of hanging forever with the worker slot held.
+- Web converter (folder mode): two files that map to the same DNG name no longer
+  overwrite each other's output while the page reports both; a failed write no longer
+  leaves a 0-byte `.dng` under the final name; losing folder permission
+  (`NotAllowedError`) mid-run stops the run instead of converting the remaining files
+  and failing them with a `TypeError`.
+- Web converter: keyboard focus is no longer dropped to the page body after every run
+  and after Stop; ZIP entry names no longer keep backslashes from file names (APPNOTE
+  forbids them and Windows tools read them as folder separators); `web/build.sh` refuses
+  an output path that is a regular file instead of deleting it.
+- Docs: `--uncompressed` DNGs are about twice the size of the default ones (1.7 to 2.6
+  times on the public samples), not about three times; the web converter's preview option
+  no longer claims a full-size preview (the embedded one is the camera's mid-size JPEG);
+  the 13 public samples are 10.7 to 45.7 megapixels, not 24 to 46; the library guide
+  no longer says every binding has no file access (the Python package reads and writes
+  paths).
+- Docs: the README quick start lists the build prerequisites (Apple's command line tools
+  on macOS, a C compiler on Linux, the MSVC Build Tools on Windows) and tells every
+  platform to open a new terminal after installing Rust; the troubleshooting page quotes
+  the error a Rust older than 1.85 really prints (``feature `edition2024` is required``)
+  and says that nightly is not needed.
+- Release: `scripts/release/check_version.sh` also checks the Python crate's version, the
+  three lockfiles (`Cargo.lock`, `crates/ticoraw-py/Cargo.lock`, `fuzz/Cargo.lock`) and the
+  npm and web `package.json` / `package-lock.json` versions, which a version bump used to
+  miss, breaking the Python and WebAssembly CI. The new
+  `scripts/release/bump_version.sh X.Y.Z` (with `--dry-run`) updates all of them, the
+  changelog and the notices in one step, and packaging/README.md documents it.
+- Workflow and manifest comments no longer say that compiled builds are always kept as
+  workflow artifacts: they are uploaded only when `ALLOW_BINARY_DISTRIBUTION` is `true`.
+- `THIRD-PARTY-NOTICES.md` (with the IJG statement) now ships in the Python wheels and the
+  npm package, and covers the crates that only the wheels link (numpy, pyo3, ndarray and
+  others).
 
 ### Security
 
 - `dng::decode_dng_cfa`: hostile 64-bit `TileByteCounts` could overflow their sum (a
   panic with overflow checks on, a wrapped sum without). The sum now saturates and the
   file fails with an error. Found by fuzzing; the reproducer is replayed as a regression test.
+- `ticoraw-dng`: the EXIF, GPS and Interoperability fields copied from the NEF have a total
+  size budget, so one crafted NEF can no longer make `convert` use memory and write output
+  far larger than the input.
+- `ticoraw convert --with-sidecar` reads only a regular sidecar file, and at most a fixed
+  number of bytes: a FIFO no longer hangs the conversion and a symlink to `/dev/zero` no
+  longer uses up all memory.
+- `ticoraw scan`, `inspect` and `decode` sanitise the camera's Make and Model strings
+  before printing them, so a crafted file cannot inject terminal escape sequences.
+- Python: `ticoraw.to_dng(source, dest)` refuses a `dest` that is a hard link to the
+  source NEF instead of overwriting the NEF.
+- The supply-chain checks (cargo-deny) also cover `crates/ticoraw-py/Cargo.lock`, whose
+  crates are linked into the wheels.
+- Patent gate: the docs website (`pages.yml`) deploys the compiled web converter at
+  `/convert/` only from a manual run with `include_converter = yes` **and** the repository
+  variable `ALLOW_BINARY_DISTRIBUTION` set to `true`; a push to `main` deploys the docs
+  alone, whatever the variable says. Likewise the release workflow now attests, uploads
+  and checksums the CLI archives only on a manual run with `attach_binaries = yes` and the
+  variable, never on a tag push. This matches the documented two-key rule.
 
 ## [0.1.0] - 2026-10-27
 

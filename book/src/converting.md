@@ -135,8 +135,8 @@ photosite, plus the preview.
 ## Speed
 
 Each file is decoded and compressed on every core of your computer, and a few files are
-converted at the same time. On an Apple M5 Pro, the 13 public samples (251 MB of NEFs, 24
-to 46 megapixels each) convert in 0.7 seconds, about 18 files per second.
+converted at the same time. On an Apple M5 Pro, the 13 public samples (251 MB of NEFs,
+10.7 to 45.7 megapixels each) convert in 0.7 seconds, about 18 files per second.
 
 `--jobs` sets how many files are converted at once. The default is up to 4, and at most one
 per 2 GB of memory, which gives nearly all the speed. Each file in progress needs several

@@ -2,7 +2,9 @@
 
 ticoraw is also a library you can build into your own software: a raw processor, a photo
 manager, a web app or a data pipeline. Every binding wraps the same Rust core, so they all
-decode bit-exactly, and they all work on bytes in memory with no file access of their own.
+decode bit-exactly. The Rust, C and JavaScript (WebAssembly) bindings work on bytes in
+memory, with no file access of their own; the Python package also accepts file paths, and
+`ticoraw.to_dng(nef, dest)` writes the DNG to `dest` itself.
 
 | Language | What you get | Get it today | Packages |
 |---|---|---|---|

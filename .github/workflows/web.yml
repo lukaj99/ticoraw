@@ -10,8 +10,10 @@ name: Web converter
 # distributed, pending patent-licensing review (JPEG XS is licensed per decoder copy
 # through a patent pool). This workflow therefore only tests: it has no deploy job and
 # uploads nothing, no build output, no Playwright traces or reports (a trace embeds the
-# page's files, the wasm included). Any future deployment must be gated on the repository
-# variable ALLOW_BINARY_DISTRIBUTION == 'true' and a manual dispatch.
+# page's files, the wasm included). The app is deployed only by pages.yml, at /convert/ on
+# the docs site, and only from a manual run with include_converter = yes while the
+# repository variable ALLOW_BINARY_DISTRIBUTION is 'true'. Any other deployment must be
+# gated the same way: a manual dispatch input and the variable.
 
 on:
   push:

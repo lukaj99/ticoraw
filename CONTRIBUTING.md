@@ -329,9 +329,12 @@ you, and it is normal for a pull request to go through a round or two of changes
 ## How releases work
 
 Releases are made by the maintainer, following
-[packaging/README.md](packaging/README.md). In short: move the `[Unreleased]` entries in
-CHANGELOG.md under the new version, bump the versions, check them with
-`scripts/release/check_version.sh`, and push a signed `vX.Y.Z` tag. The project follows
+[packaging/README.md](packaging/README.md). In short: run
+`scripts/release/bump_version.sh X.Y.Z` (try `--dry-run` first), which moves the
+`[Unreleased]` entries in CHANGELOG.md under the new version, sets the version in every
+manifest (the main workspace, the Python crate and the npm and web `package.json` files),
+regenerates the lockfiles and runs `scripts/release/check_version.sh`; then push a signed
+`vX.Y.Z` tag. The project follows
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version (0.x) may change
 the API.
 
@@ -342,17 +345,21 @@ Linux, macOS and Windows plus the MSRV, wasm32 and fresh conformance checks, and
 **The patent gate.** Compiled decoders are not distributed, pending a patent-licensing
 review (see the [patent notice](README.md#patent-notice)). The release workflow still
 builds the CLI for 8 targets and smoke-tests each build, so the release path stays
-working. But nothing compiled is uploaded, attached to a Release or published unless the
-repository variable `ALLOW_BINARY_DISTRIBUTION` is `true`, and attaching binaries also
-needs a manual run with `attach_binaries = yes`. The variable is unset. The C, Python and
-WebAssembly workflows follow the same rule: they build and test, and their publish jobs
-(PyPI, npm) need a manual run **and** the variable. Publishing crates (source) to
-crates.io is a separate manual step.
+working. But its archives are uploaded, attested or attached to a Release only on a
+manual run with `attach_binaries = yes` **and** with the repository variable
+`ALLOW_BINARY_DISTRIBUTION` set to `true`; a tag push never uploads them. The variable is
+unset. The C, Python and WebAssembly workflows build and test; they upload their compiled
+outputs as short-lived workflow artifacts only when the variable is `true` (any signed-in
+user can download those), and their publish jobs (PyPI, npm) need a manual run **and**
+the variable. The docs website deploys the web converter at `/convert/` only from a
+manual run of `pages.yml` with `include_converter = yes` **and** the variable; a push to
+`main` deploys the docs alone. Publishing crates (source) to crates.io is a separate
+manual step.
 
 If you add a workflow step that uploads, publishes or deploys anything compiled, guard it
-the same way: `vars.ALLOW_BINARY_DISTRIBUTION == 'true'`, plus a manual
-`workflow_dispatch` input for anything that publishes. Pull requests that weaken the gate
-are not merged.
+the same way: `vars.ALLOW_BINARY_DISTRIBUTION == 'true'` on every upload, plus a manual
+`workflow_dispatch` input for anything that publishes or deploys. Pull requests that
+weaken the gate are not merged.
 
 ## Licence of contributions
 

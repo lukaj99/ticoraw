@@ -5,9 +5,12 @@ name: C API
 # (the C test also under AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer).
 #
 # Patent gate: compiled decoders are NOT published, pending patent-licensing review (see the
-# patent notice in README.md). This workflow builds and tests them and keeps the libraries
-# as short-lived workflow artifacts only. It has no release, publish or deploy step. Any such
-# step added later must be guarded by BOTH a manual `workflow_dispatch` input and the
+# patent notice in README.md). This workflow builds and tests them. It uploads the libraries
+# as short-lived workflow artifacts ONLY when the repository variable
+# ALLOW_BINARY_DISTRIBUTION is 'true' (any signed-in user can download the artifacts of a
+# public repository); otherwise they never leave the runner. Do not add an ungated upload
+# of a compiled library or binary. It has no release, publish or deploy step. Any such step
+# added later must be guarded by BOTH a manual `workflow_dispatch` input and the
 # repository variable, for example:
 #
 #   if: github.event_name == 'workflow_dispatch' && inputs.distribute &&

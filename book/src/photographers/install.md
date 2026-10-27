@@ -87,10 +87,11 @@ card](first-conversion.md).
 **1. Install Rust.** Go to [rustup.rs](https://rustup.rs) and download `rustup-init.exe`
 (the 64-bit version suits almost every PC). Run it.
 
-- If it says you need the **Visual Studio C++ build tools**, let it install them (choose
-  the option to install Visual Studio Community, or install the "Build Tools for Visual
-  Studio" with the **Desktop development with C++** workload). Rust uses them to build
-  programs. This download is large and can take a while.
+- If it says you need the **Visual Studio C++ build tools** (MSVC, Microsoft's C++
+  compiler and linker), let it install them (choose the option to install Visual Studio
+  Community, or install the "Build Tools for Visual Studio" with the **Desktop development
+  with C++** workload). Rust uses them to build programs. This download is large and can
+  take a while.
 - When the installer asks how to proceed, type `1` and press <kbd>Enter</kbd> for the
   default installation.
 
@@ -146,7 +147,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Press <kbd>Enter</kbd> for the default installation, then close the terminal and open a
 new one. (Your distribution's own `rust` or `cargo` package works too, if it is version
-1.85 or newer.)
+1.85 or newer. Debian's and Ubuntu's packages are usually older; an older one fails with
+``feature `edition2024` is required``, see
+[troubleshooting](troubleshooting.md#feature-edition2024-is-required-or-requires-rustc-185-or-newer).)
 
 **4. Check, build and install.**
 
