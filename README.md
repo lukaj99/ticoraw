@@ -5,6 +5,8 @@ private, bit-exact.
 
 [![CI](https://github.com/lukaj99/ticoraw/actions/workflows/ci.yml/badge.svg)](https://github.com/lukaj99/ticoraw/actions/workflows/ci.yml)
 [![Conformance](https://github.com/lukaj99/ticoraw/actions/workflows/conformance.yml/badge.svg)](https://github.com/lukaj99/ticoraw/actions/workflows/conformance.yml)
+[![crates.io](https://img.shields.io/crates/v/ticoraw.svg)](https://crates.io/crates/ticoraw)
+[![docs.rs](https://img.shields.io/docsrs/ticoraw)](https://docs.rs/ticoraw)
 [![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue.svg)](#licence)
 
 Recent Nikon Z cameras can save raw files in **High Efficiency** (HE) and **High
@@ -62,11 +64,11 @@ programs:
 Choose the default installation when `rustup` asks. Then **close the terminal and open a
 new one**, so that it finds `cargo`. `cargo --version` should print 1.85 or higher.
 
-**2. Install `ticoraw`.** This downloads the source code and builds it, which takes a few
-minutes the first time:
+**2. Install `ticoraw`.** This downloads the source code from crates.io and builds it, which
+takes a few minutes the first time:
 
 ```sh
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ```
 
 **3. Convert your card.** Point `ticoraw convert` at the card (or any folder) and say where
@@ -155,8 +157,8 @@ accepts file paths.
 
 | Language | Where | How to get it today |
 |---|---|---|
-| Rust | [`ticoraw`](crates/ticoraw/README.md) (decoder), [`ticoraw-dng`](crates/ticoraw-dng/README.md) (DNG writer) | Git dependency; not on crates.io yet |
-| C and C++ | [`ticoraw-capi`](crates/ticoraw-capi/README.md), header `include/ticoraw.h` | Build from source with `cargo build -p ticoraw-capi --release` |
+| Rust | [`ticoraw`](crates/ticoraw/README.md) (decoder), [`ticoraw-dng`](crates/ticoraw-dng/README.md) (DNG writer) | crates.io: `cargo add ticoraw ticoraw-dng` |
+| C and C++ | [`ticoraw-capi`](crates/ticoraw-capi/README.md), header `include/ticoraw.h` | Source on crates.io (`ticoraw-capi`), or `cargo build -p ticoraw-capi --release` in a clone |
 | Python | [`crates/ticoraw-py`](crates/ticoraw-py/README.md), numpy arrays, rawpy-style names | `pip install` from a clone; PyPI wheels pending licensing review |
 | JavaScript | [`crates/ticoraw-wasm`](crates/ticoraw-wasm/README.md), WebAssembly for browsers and Node.js | Build with wasm-pack; npm package pending licensing review |
 
@@ -164,8 +166,8 @@ In Rust:
 
 ```toml
 [dependencies]
-ticoraw = { git = "https://github.com/lukaj99/ticoraw" }
-ticoraw-dng = { git = "https://github.com/lukaj99/ticoraw" }
+ticoraw = "0.2"
+ticoraw-dng = "0.2"
 ```
 
 ```rust

@@ -9,13 +9,12 @@ Two crates do the work:
 
 ## Add the crates
 
-The crates are not on crates.io yet, so depend on the Git repository. You need Rust 1.85 or
-later.
+Both crates are on crates.io (`cargo add ticoraw ticoraw-dng`). You need Rust 1.85 or later.
 
 ```toml
 [dependencies]
-ticoraw = { git = "https://github.com/lukaj99/ticoraw" }
-ticoraw-dng = { git = "https://github.com/lukaj99/ticoraw" }
+ticoraw = "0.2"
+ticoraw-dng = "0.2"
 ```
 
 This follows the `main` branch. To pin an exact commit, add `rev = "<commit hash>"` to both
@@ -251,8 +250,8 @@ encode on every core. Turn it off for a single-threaded build with no dependenci
 
 ```toml
 [dependencies]
-ticoraw = { git = "https://github.com/lukaj99/ticoraw", default-features = false }
-ticoraw-dng = { git = "https://github.com/lukaj99/ticoraw", default-features = false }
+ticoraw = { version = "0.2", default-features = false }
+ticoraw-dng = { version = "0.2", default-features = false }
 ```
 
 Without it, both crates build for `wasm32-unknown-unknown`. The

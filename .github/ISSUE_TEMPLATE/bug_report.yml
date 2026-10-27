@@ -80,7 +80,8 @@ body:
     attributes:
       label: How did you install ticoraw?
       options:
-        - "cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli"
+        - "cargo install ticoraw-cli (from crates.io)"
+        - "cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli (latest main)"
         - "From a clone (cargo install --path crates/ticoraw-cli, or cargo run)"
         - As a Rust library dependency in my own project
         - Python package built from source (pip install ./crates/ticoraw-py)

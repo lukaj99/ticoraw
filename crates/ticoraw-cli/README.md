@@ -10,7 +10,7 @@ files to complete DNGs, and inspects, verifies and scans them. Its pixels are
 Build it from source with Rust 1.85 or later (get Rust from <https://rustup.rs>):
 
 ```sh
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ```
 
 or from a clone:

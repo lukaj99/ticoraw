@@ -313,7 +313,7 @@ jobs:
           Build it with Rust 1.85 or later:
 
           \`\`\`sh
-          cargo install --git https://github.com/$GH_REPO --tag $TAG ticoraw-cli
+          cargo install --locked ticoraw-cli --version ${TAG#v}
           \`\`\`
           EOF
           fi

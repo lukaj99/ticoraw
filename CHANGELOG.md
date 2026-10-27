@@ -7,6 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `ticoraw`, `ticoraw-dng`, `ticoraw-cli` and `ticoraw-capi` 0.2.0 are on crates.io; install
+  with `cargo install --locked ticoraw-cli` and depend on `ticoraw = "0.2"`.
+
 ## [0.2.0] - 2026-10-27
 
 ### Added

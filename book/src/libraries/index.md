@@ -8,7 +8,7 @@ memory, with no file access of their own; the Python package also accepts file p
 
 | Language | What you get | Get it today | Packages |
 |---|---|---|---|
-| [Rust](rust.md) | `ticoraw` (decoder) and `ticoraw-dng` (DNG writer) | Git dependency in `Cargo.toml` | crates.io: planned |
+| [Rust](rust.md) | `ticoraw` (decoder) and `ticoraw-dng` (DNG writer) | `cargo add ticoraw ticoraw-dng` | crates.io (source) |
 | [C and C++](c.md) | A stable C ABI with one header, `ticoraw.h` | Build the static or shared library with `cargo` | Prebuilt libraries: pending licensing |
 | [Python](python.md) | `ticoraw.read()` with numpy arrays, `ticoraw.to_dng()` | `pip install` from a clone (builds with maturin) | PyPI wheels: pending licensing |
 | [JavaScript](javascript.md) | `toDng()` and `decode()` in WebAssembly, for browsers and Node.js | Build with `wasm-pack` | npm: pending licensing |

@@ -16,13 +16,13 @@ The library is a pure functional core over `&[u8]`: no filesystem access, no clo
 [`ticoraw-dng`](https://github.com/lukaj99/ticoraw/blob/main/crates/ticoraw-dng/README.md)
 on top of it.
 
-> **Source only.** The crate is not on crates.io yet; use it as a git dependency. Compiled
-> decoders are not distributed, pending a patent-licensing review; see the
+> **Source only.** The crate is published on crates.io as source code. Compiled decoders
+> (binaries, wheels, npm packages) are not distributed, pending a patent-licensing review; see the
 > [patent notice](https://github.com/lukaj99/ticoraw#patent-notice).
 
 ```toml
 [dependencies]
-ticoraw = { git = "https://github.com/lukaj99/ticoraw" }
+ticoraw = "0.2"
 ```
 
 ## Example
@@ -87,7 +87,7 @@ has no dependencies. It still uses `std` for `Vec` and `String`, but never touch
 filesystem, threads or the clock, so it builds for `wasm32-unknown-unknown`:
 
 ```toml
-ticoraw = { git = "https://github.com/lukaj99/ticoraw", default-features = false }
+ticoraw = { version = "0.2", default-features = false }
 ```
 
 ```sh

@@ -61,7 +61,7 @@ It should print a version number of 1.85 or higher, such as `cargo 1.91.0`.
 **5. Build and install ticoraw.**
 
 ```sh
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ```
 
 `cargo` downloads the source code and builds it. This usually takes a minute or two, and it
@@ -110,7 +110,7 @@ It should print a version number of 1.85 or higher.
 **4. Build and install ticoraw.**
 
 ```text
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ```
 
 This usually takes a minute or two, and ends with a line like `Installed package
@@ -155,7 +155,7 @@ new one. (Your distribution's own `rust` or `cargo` package works too, if it is 
 
 ```sh
 cargo --version          # 1.85 or higher
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ticoraw --version
 ```
 
@@ -180,10 +180,10 @@ Both ways install the same program, called `ticoraw`, into Rust's `bin` folder
 Run the install command again:
 
 ```sh
-cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli
+cargo install --locked ticoraw-cli
 ```
 
-`cargo` rebuilds ticoraw when the source has changed. To rebuild it anyway, add `--force`.
+`cargo` installs the newest release from crates.io when there is one. To rebuild it anyway, add `--force`.
 To update Rust itself, run `rustup update`.
 
 ## Uninstalling

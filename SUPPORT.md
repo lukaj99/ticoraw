@@ -27,7 +27,8 @@ A few quick checks solve most problems:
    [docs/compat.md](docs/compat.md) list the bodies verified so far. Others may work but
    are unverified: please tell us through the camera support form.
 3. **Is your copy up to date?** `ticoraw --version` shows what you have. Reinstall with
-   `cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli --force` to get the
+   `cargo install --locked --force ticoraw-cli` to get the latest release, or
+   `cargo install --git https://github.com/lukaj99/ticoraw ticoraw-cli --force` for the
    latest `main`.
 4. **Does your Rust toolchain meet the minimum?** Building needs Rust 1.85 or later
    (`rustc --version`; update with `rustup update`).
