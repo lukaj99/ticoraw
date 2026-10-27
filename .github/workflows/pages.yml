@@ -119,7 +119,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.include_converter == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.ref == 'refs/heads/main'
         with:
           tool: wasm-pack@0.15.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: github.event_name == 'workflow_dispatch' && inputs.include_converter == 'yes' && vars.ALLOW_BINARY_DISTRIBUTION == 'true' && github.ref == 'refs/heads/main'
         with:
           node-version: 22

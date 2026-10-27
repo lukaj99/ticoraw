@@ -39,7 +39,7 @@ jobs:
     name: header is up to date
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # Keep in step with CBINDGEN_VERSION in crates/ticoraw-capi/scripts/gen-header.sh.
       - uses: taiki-e/install-action@v2
@@ -58,7 +58,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Rust tests of the extern functions
@@ -72,7 +72,7 @@ jobs:
         run: crates/ticoraw-capi/scripts/c-test.sh
       # Compiled libraries are uploaded only when binary distribution is allowed (see the
       # patent gate above); any signed-in user can download public workflow artifacts.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         with:
           name: ticoraw-capi-${{ runner.os }}
@@ -91,7 +91,7 @@ jobs:
     name: C test (ASan + UBSan + LSan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: C test under sanitizers
