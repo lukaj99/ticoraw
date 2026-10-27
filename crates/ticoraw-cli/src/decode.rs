@@ -28,7 +28,7 @@ Options:
   -o, --output <path>    Output file [default: the input path with a .dng/.pgm extension]
   --format <dng|pgm>     Output format [default: dng]
   --uncompressed         Store the DNG's mosaic uncompressed (about three times larger)
-  --no-preview           Leave out the DNG's full-size preview (the thumbnail stays)
+  --no-preview           Leave out the DNG's embedded preview (the thumbnail stays)
   -f, --force            Overwrite an existing output file
   -h, --help             Show this help
 

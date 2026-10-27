@@ -3,7 +3,7 @@ name = "ticoraw-cli"
 description = "Command-line tool to convert Nikon HE/HE* NEF raw files to DNG, and to inspect, decode and verify them"
 keywords = ["nikon", "nef", "raw", "jpeg-xs", "dng"]
 categories = ["multimedia::images", "command-line-utilities"]
-readme = "../../README.md"
+readme = "README.md"
 # The README lives at the workspace root; cargo copies it into the package.
 include = ["src/**", "Cargo.toml", "LICENSE-*", "README.md"]
 version.workspace = true

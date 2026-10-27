@@ -46,7 +46,7 @@ ticoraw convert ~/Pictures/MyCard -r --json > convert-log.jsonl
 | `-f`, `--force` | Replace DNGs that already exist |
 | `--with-sidecar` | Use the `.xmp` sidecar next to each NEF as the DNG's XMP (see [Sidecars](#sidecars)) |
 | `--uncompressed` | Store the raw data uncompressed (2 bytes per photosite): simpler to read, but much larger |
-| `--no-preview` | Leave out the full-size preview. The small thumbnail is always kept |
+| `--no-preview` | Leave out the embedded preview (the camera's mid-size JPEG, or a rendered one for HLG frames). The small thumbnail is always kept |
 | `-j`, `--jobs <n>` | How many files to convert at once (see [Speed](#speed)) |
 | `--json` | Print one JSON object per line instead of text (see [For scripts](#for-scripts)) |
 

@@ -170,9 +170,11 @@ pub fn inspect(bytes: &[u8]) -> Result<JsValue, JsValue> {
     inspection(&i)
 }
 
-/// Like `inspect`, from just the start of a file of `fileLength` bytes (in practice the
-/// first two megabytes are enough), so a page can classify a `File` from `file.slice()`
-/// without reading all of it.
+/// Like `inspect`, from just the start of a file of `fileLength` bytes, so a page can
+/// classify a `File` from `file.slice()` without reading all of it. Embedded previews can
+/// put the raw strip several megabytes in (up to ~8 MB on the Z9); when the prefix is too
+/// short the error is `Truncated` with `offset` = the strip start, so read up to
+/// `offset + 64 KiB` and retry.
 ///
 /// @throws {TypeError} when `fileLength` is not a non-negative integer.
 /// @throws {TicoError} as `inspect` does; kind `"Truncated"` when the prefix is too short.

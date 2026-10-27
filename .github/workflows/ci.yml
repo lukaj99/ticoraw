@@ -25,6 +25,8 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+      # The book's CLI reference is generated from --help; fail if it drifted.
+      - run: sh scripts/docs/cli-help.sh --check
 
   clippy:
     name: clippy

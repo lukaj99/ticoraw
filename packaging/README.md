@@ -25,8 +25,8 @@ What the release workflow does today:
 
 | Step | When it runs |
 |---|---|
-| Check the tag, run every test, build and package the CLI for 8 targets, write `SHA256SUMS`, attest provenance | Every release run |
-| Keep the archives as workflow artifacts (7 days) | Every release run |
+| Check the tag, run every test, build, package and smoke-test the CLI for 8 targets | Every release run |
+| Upload the archives as workflow artifacts (7 days), write `SHA256SUMS`, attest provenance | **Only** when the repository variable `ALLOW_BINARY_DISTRIBUTION` is `true` (public workflow artifacts can be downloaded by any signed-in user) |
 | Create or update the GitHub Release, **source code only**, notes from CHANGELOG.md | Every release run |
 | Attach the binary archives and `SHA256SUMS` to the Release | **Only** when run by hand with `attach_binaries = yes` **and** the repository variable `ALLOW_BINARY_DISTRIBUTION` is `true` |
 | Publish the crates (source) to crates.io | Only when run by hand with `publish_crates = yes` |

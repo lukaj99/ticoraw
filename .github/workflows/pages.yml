@@ -118,7 +118,7 @@ jobs:
             echo "::notice title=Web converter skipped::web/build.sh does not exist on this branch, so the site is deployed without /convert/."
             exit 0
           fi
-          sh web/build.sh
+          DOCS_URL=https://lukaj99.github.io/ticoraw/faq.html sh web/build.sh
           if [ ! -f web/dist/index.html ]; then
             echo "web/build.sh did not produce web/dist/index.html" >&2
             exit 1

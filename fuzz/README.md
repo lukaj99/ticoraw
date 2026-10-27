@@ -41,11 +41,12 @@ small reproducer under `artifacts-regressions/<target>/`. The nightly workflow
 between runs, and uploads new crash artifacts. A reproducer stays there after its fix as a
 regression test; until then the nightly job for that target fails.
 
-Open reproducers:
+Fixed reproducers, kept as regressions (`crates/ticoraw/tests/synthetic.rs` replays every
+file in `artifacts-regressions/` through all public entry points):
 
 - `decode_dng_cfa/tile-byte-count-sum-overflow`: a 150-byte hand-written DNG whose two
-  LONG8 `TileByteCounts` of `u64::MAX` overflow the byte-count sum in
-  `dng::decode_ljpeg_layout` (a panic with overflow checks on, a wrapped sum without).
+  LONG8 `TileByteCounts` of `u64::MAX` overflowed the byte-count sum in
+  `dng::decode_ljpeg_layout`; the sum now saturates.
 
 `src/synth` is a copy of the test support in `crates/ticoraw/tests/common/`; update it
 when those encoders change.

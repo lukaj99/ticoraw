@@ -34,9 +34,10 @@ A few quick checks solve most problems:
 
 ## Prebuilt binaries
 
-The project ships source code only, because of JPEG XS patent considerations (see the
-patent notice in the README). Please do not ask for binaries in issues; the README
-explains how to build `ticoraw` yourself with one command.
+For now the project ships source code only: prebuilt downloads, PyPI and npm packages and
+a hosted web converter are planned but on hold while JPEG XS patent licensing is reviewed
+(see the patent notice in the README). The README explains how to build `ticoraw`
+yourself with one command; there is no need to open an issue asking for binaries.
 
 ## When you post
 

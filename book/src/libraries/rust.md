@@ -235,7 +235,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 | `Options` field | Default | Meaning |
 |---|---|---|
 | `compression` | `Compression::LosslessJpeg` | `Compression::Uncompressed` writes one 16-bit strip (about three times larger) |
-| `preview` | `Preview::Auto` | `Preview::None` skips the full-size preview; the thumbnail is always written |
+| `preview` | `Preview::Auto` | `Preview::None` skips the embedded preview; the thumbnail is always written |
 | `carry_xmp` | `true` | Copy the NEF's XMP packet |
 | `extra_xmp` | `None` | An XMP packet that **replaces** the NEF's, written even when `carry_xmp` is `false` |
 | `original_raw_file_name` | `None` | Written as `OriginalRawFileName` |

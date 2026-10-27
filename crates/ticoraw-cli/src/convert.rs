@@ -43,7 +43,7 @@ Options:
   --skip-existing     Skip a NEF whose DNG already exists
   -f, --force         Replace existing DNGs
   --uncompressed      Store the mosaic uncompressed (about three times larger)
-  --no-preview        Leave out the full-size preview (the thumbnail stays)
+  --no-preview        Leave out the embedded preview (the thumbnail stays)
   --with-sidecar      Use the sidecar <name>.xmp (any case) next to each NEF, as written by
                       Lightroom, Bridge or Capture One, as the DNG's XMP instead of the
                       NEF's own packet

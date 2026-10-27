@@ -64,7 +64,7 @@ Options:
   --skip-existing     Skip a NEF whose DNG already exists
   -f, --force         Replace existing DNGs
   --uncompressed      Store the mosaic uncompressed (about three times larger)
-  --no-preview        Leave out the full-size preview (the thumbnail stays)
+  --no-preview        Leave out the embedded preview (the thumbnail stays)
   --with-sidecar      Use the sidecar <name>.xmp (any case) next to each NEF, as written by
                       Lightroom, Bridge or Capture One, as the DNG's XMP instead of the
                       NEF's own packet
@@ -97,7 +97,7 @@ Options:
   -o, --output <path>    Output file [default: the input path with a .dng/.pgm extension]
   --format <dng|pgm>     Output format [default: dng]
   --uncompressed         Store the DNG's mosaic uncompressed (about three times larger)
-  --no-preview           Leave out the DNG's full-size preview (the thumbnail stays)
+  --no-preview           Leave out the DNG's embedded preview (the thumbnail stays)
   -f, --force            Overwrite an existing output file
   -h, --help             Show this help
 
