@@ -38,7 +38,7 @@ jobs:
       # The run's exact commit pair: PR base or the previous tip of main.
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Valgrind
@@ -129,7 +129,7 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: All cores
@@ -138,7 +138,7 @@ jobs:
         env:
           RAYON_NUM_THREADS: 1
         run: cargo bench --locked -p ticoraw --bench decode -- --noplot decode_ticoraw
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: criterion
           path: target/criterion
