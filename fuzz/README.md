@@ -36,10 +36,10 @@ targets need none.
 ## Crashes
 
 Minimise a crash with `cargo +nightly fuzz tmin -a <target> <artifact>` and keep the
-small reproducer under `artifacts-regressions/<target>/`. The nightly workflow
+small reproducer under `artifacts-regressions/<target>/`. The scheduled workflow
 (`.github/workflows/fuzz.yml`) replays those before fuzzing, caches each target's corpus
 between runs, and uploads new crash artifacts. A reproducer stays there after its fix as a
-regression test; until then the nightly job for that target fails.
+regression test; until then the scheduled job for that target fails.
 
 Fixed reproducers, kept as regressions (`crates/ticoraw/tests/synthetic.rs` replays every
 file in `artifacts-regressions/` through all public entry points):

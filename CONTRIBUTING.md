@@ -105,7 +105,7 @@ Other workflows also run on pull requests: `conformance.yml` (public samples, be
 `bench.yml` (the instruction-count gate, below), `capi.yml` (the C header and C tests, also
 under sanitizers) and `deny.yml` (cargo-deny, the third-party notices and the release
 scripts). `python.yml` and `wasm.yml` run when the crates they build change. `fuzz.yml`
-runs nightly.
+runs weekly (and on demand), skipping a scheduled run when `main` is unchanged.
 
 ### Python bindings
 
