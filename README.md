@@ -218,7 +218,7 @@ frame in about 0.6 s on one thread
 - **Conformance kit.** [conformance/](conformance/README.md) pins 13 public CC0 samples
   and the Adobe-verified hash of each decoded image. CI checks them on every pull request
   and downloads them afresh every week. Other decoders can use the same kit.
-- **Fuzzing.** Nine [cargo-fuzz targets](fuzz/README.md) run every night against the
+- **Fuzzing.** Nine [cargo-fuzz targets](fuzz/README.md) run weekly against the
   container, codestream, DNG and lossless JPEG parsers.
 - **Benchmarks.** [Criterion benchmarks](crates/ticoraw/benches/decode.rs) measure speed,
   and an instruction-count gate fails any pull request that makes decoding execute more

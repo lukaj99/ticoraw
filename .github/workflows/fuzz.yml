@@ -2,7 +2,7 @@ name: Fuzz
 
 on:
   schedule:
-    - cron: "23 2 * * *"
+    - cron: "23 2 * * 0"
   workflow_dispatch:
     inputs:
       seconds:
@@ -20,8 +20,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Scheduled runs are skipped when the branch is at the commit of the last successful
+  # Fuzz run. Manual runs always fuzz. If the lookup fails, fuzz anyway.
+  changed:
+    name: changed since last successful run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          changed=true
+          if [ "$EVENT" = schedule ]; then
+            last=$(gh api "repos/$REPO/actions/workflows/fuzz.yml/runs?branch=$BRANCH&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // ""') || last=""
+            echo "last successful run: ${last:-none}; this run: $SHA"
+            if [ "$last" = "$SHA" ]; then changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
   fuzz:
     name: fuzz (${{ matrix.target }})
+    needs: changed
+    if: github.event_name != 'schedule' || needs.changed.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
