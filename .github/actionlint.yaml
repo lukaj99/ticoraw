@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # arch-vps runner registered to this repo for the Fuzz workflow.
+  labels:
+    - ticoraw-fuzz

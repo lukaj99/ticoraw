@@ -20,11 +20,14 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Both jobs run on the arch-vps self-hosted runner (label ticoraw-fuzz, unprivileged
+  # `actions` user, low CPU priority), so fuzzing costs no hosted Actions minutes.
+  # The single runner takes the matrix legs one at a time.
   # Scheduled runs are skipped when the branch is at the commit of the last successful
   # Fuzz run. Manual runs always fuzz. If the lookup fails, fuzz anyway.
   changed:
     name: changed since last successful run
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ticoraw-fuzz]
     timeout-minutes: 5
     permissions:
       actions: read
@@ -52,7 +55,7 @@ jobs:
     name: fuzz (${{ matrix.target }})
     needs: changed
     if: github.event_name != 'schedule' || needs.changed.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ticoraw-fuzz]
     timeout-minutes: 40
     strategy:
       fail-fast: false
