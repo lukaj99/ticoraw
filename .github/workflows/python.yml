@@ -56,9 +56,9 @@ jobs:
     name: rustfmt, clippy, MSRV
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # pyo3's build script needs an interpreter even for `cargo check`.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
@@ -85,9 +85,9 @@ jobs:
           - { platform: windows, runner: windows-latest, target: x64 }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # An interpreter for pyo3's build script (on Windows it also provides python3.lib).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Build abi3 wheel
@@ -99,7 +99,7 @@ jobs:
           args: --release --locked --out dist
       # Compiled decoders are uploaded only when binary distribution is allowed (see the
       # PATENT GATE above); the test jobs build their own wheels instead.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: vars.ALLOW_BINARY_DISTRIBUTION == 'true'
         with:
           name: wheels-${{ matrix.platform }}-${{ matrix.target }}
@@ -110,13 +110,13 @@ jobs:
     name: sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: PyO3/maturin-action@v1
         with:
           working-directory: crates/ticoraw-py
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: crates/ticoraw-py/dist
@@ -137,8 +137,8 @@ jobs:
           - { wheel: windows-x64, runner: windows-latest, python: "3.x" }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Build the wheel on this runner (never downloaded from another job)
@@ -159,8 +159,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Build the wheel on this runner (never downloaded from another job)
@@ -175,7 +175,7 @@ jobs:
       - name: Check the type stubs against the module
         run: python -m mypy.stubtest ticoraw
       # Same cache as conformance.yml.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/conformance-samples
           key: conformance-samples-${{ hashFiles('conformance/manifest.toml') }}
@@ -214,12 +214,12 @@ jobs:
             echo "Binary distribution is not allowed (pending patent-licensing review)." >&2
             exit 1
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: sdist
           path: dist
